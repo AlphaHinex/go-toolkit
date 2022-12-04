@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math/rand"
 	"os"
@@ -25,7 +26,8 @@ func main() {
 			&cli.StringFlag{
 				Name:  "t",
 				Value: "*",
-				Usage: "File type to pick",
+				Usage: "File type(s) to pick, * means all types, " +
+					"comma separated for multi values: 'jpg,png', case insensitive",
 			},
 			&cli.StringFlag{
 				Name:  "i",
@@ -45,7 +47,8 @@ func main() {
 		},
 		Action: func(cCtx *cli.Context) error {
 			input := cCtx.String("i")
-			files, err := os.ReadDir(input)
+			filter := cCtx.String("t")
+			files, err := loadFiles(input, filter)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -60,7 +63,6 @@ func main() {
 			}
 
 			n := cCtx.Int("n")
-			t := cCtx.String("t")
 			keep := cCtx.Bool("k")
 			fileSet := make(map[string]struct{})
 			rand.Seed(time.Now().UnixNano())
@@ -69,33 +71,30 @@ func main() {
 			}
 			for i := 0; i < n; {
 				file := files[rand.Intn(len(files))]
-				if !file.IsDir() && !strings.HasPrefix(file.Name(), ".") &&
-					(t == "*" || strings.HasSuffix(strings.ToLower(file.Name()), t)) {
-					if _, exist := fileSet[file.Name()]; exist {
-						continue
-					}
-					fileSet[file.Name()] = struct{}{}
-					from := input + "/" + file.Name()
-					to := output + "/" + file.Name()
-					op := "Pick"
-					if input == output {
-						// Do nothing
-					} else if !keep {
-						err = os.Rename(from, to)
-						if err != nil {
-							log.Fatal(err)
-						}
-						op = "Move"
-					} else {
-						_, err = copyFile(from, to)
-						if err != nil {
-							log.Fatal(err)
-						}
-						op = "Copy"
-					}
-					fmt.Printf("%s %s to %s\n", op, input+"/"+file.Name(), output+"/"+file.Name())
-					i++
+				if _, exist := fileSet[file.Name()]; exist {
+					continue
 				}
+				fileSet[file.Name()] = struct{}{}
+				from := input + "/" + file.Name()
+				to := output + "/" + file.Name()
+				op := "Pick"
+				if input == output {
+					// Do nothing
+				} else if !keep {
+					err = os.Rename(from, to)
+					if err != nil {
+						log.Fatal(err)
+					}
+					op = "Move"
+				} else {
+					_, err = copyFile(from, to)
+					if err != nil {
+						log.Fatal(err)
+					}
+					op = "Copy"
+				}
+				fmt.Printf("%s %s to %s\n", op, input+"/"+file.Name(), output+"/"+file.Name())
+				i++
 			}
 			return nil
 		},
@@ -104,6 +103,30 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func loadFiles(src, filter string) ([]fs.DirEntry, error) {
+	files, err := os.ReadDir(src)
+	var result []fs.DirEntry
+	for _, file := range files {
+		if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
+			continue
+		}
+
+		include := false
+		types := strings.Split(filter, ",")
+		for _, t := range types {
+			if t == "*" {
+				include = true
+			} else if strings.HasSuffix(strings.ToLower(file.Name()), strings.TrimSpace(t)) {
+				include = true
+			}
+		}
+		if include {
+			result = append(result, file)
+		}
+	}
+	return result, err
 }
 
 func copyFile(srcFile, destFile string) (int64, error) {
