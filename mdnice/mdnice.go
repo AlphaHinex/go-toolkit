@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -32,10 +31,22 @@ func main() {
 				Name:  "token",
 				Usage: "Bearer token of mdnice",
 			},
+			&cli.StringFlag{
+				Name:  "token-file",
+				Usage: "Bearer token file of mdnice",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			src := cCtx.String("i")
 			token := cCtx.String("token")
+			if token == "" {
+				tokenFilePath := cCtx.String("token-file")
+				content, err := os.ReadFile(tokenFilePath)
+				if err != nil {
+					return err
+				}
+				token = string(content)
+			}
 			files, err := os.ReadDir(src)
 			if err != nil {
 				return err
@@ -47,14 +58,18 @@ func main() {
 				if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
 					continue
 				}
-				link, err := upload(src+"/"+file.Name(), token)
+				link, err := upload(src+string(filepath.Separator)+file.Name(), token)
 				if err != nil {
-					errlog += "Upload " + src + "/" + file.Name() + " failed: " + err.Error() + "\r\n"
+					errlog += "Upload " + src + string(filepath.Separator) + file.Name() + " failed: " + err.Error() + "\r\n"
 				} else {
 					md += "![](" + link + ")\r\n"
 				}
 			}
-			fmt.Printf("%s\r\n---\r\n%s", md, errlog)
+			content := md + "\r\n---\r\n" + errlog
+			err = os.WriteFile(src+string(filepath.Separator)+"README.md", []byte(content), 0666)
+			if err != nil {
+				return err
+			}
 			return nil
 		},
 	}
