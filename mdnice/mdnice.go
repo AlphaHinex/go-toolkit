@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -61,8 +62,10 @@ func main() {
 				link, err := upload(src+string(filepath.Separator)+file.Name(), token)
 				if err != nil {
 					errlog += "Upload " + src + string(filepath.Separator) + file.Name() + " failed: " + err.Error() + "\r\n"
+					fmt.Printf("Failed to upload %s\r\n", file.Name())
 				} else {
 					md += "![](" + link + ")\r\n"
+					fmt.Printf("Upload %s done\r\n", file.Name())
 				}
 			}
 			content := md + "\r\n---\r\n" + errlog
