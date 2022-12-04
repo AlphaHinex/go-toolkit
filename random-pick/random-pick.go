@@ -7,6 +7,8 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,8 +77,8 @@ func main() {
 					continue
 				}
 				fileSet[file.Name()] = struct{}{}
-				from := input + "/" + file.Name()
-				to := output + "/" + file.Name()
+				from := input + string(filepath.Separator) + file.Name()
+				to := output + string(filepath.Separator) + strconv.Itoa(i) + filepath.Ext(file.Name())
 				op := "Pick"
 				if input == output {
 					// Do nothing
@@ -93,7 +95,7 @@ func main() {
 					}
 					op = "Copy"
 				}
-				fmt.Printf("%s %s to %s\n", op, input+"/"+file.Name(), output+"/"+file.Name())
+				fmt.Printf("%s %s to %s\n", op, from, to)
 				i++
 			}
 			return nil
