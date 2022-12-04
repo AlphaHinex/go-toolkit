@@ -44,8 +44,8 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			path := cCtx.String("i")
-			files, err := os.ReadDir(path)
+			input := cCtx.String("i")
+			files, err := os.ReadDir(input)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -64,6 +64,9 @@ func main() {
 			keep := cCtx.Bool("k")
 			fileSet := make(map[string]struct{})
 			rand.Seed(time.Now().UnixNano())
+			if n > len(files) {
+				n = len(files)
+			}
 			for i := 0; i < n; {
 				file := files[rand.Intn(len(files))]
 				if !file.IsDir() && !strings.HasPrefix(file.Name(), ".") &&
@@ -72,10 +75,12 @@ func main() {
 						continue
 					}
 					fileSet[file.Name()] = struct{}{}
-					from := path + "/" + file.Name()
+					from := input + "/" + file.Name()
 					to := output + "/" + file.Name()
-					op := "Copy"
-					if !keep {
+					op := "Pick"
+					if input == output {
+						// Do nothing
+					} else if !keep {
 						err = os.Rename(from, to)
 						if err != nil {
 							log.Fatal(err)
@@ -86,8 +91,9 @@ func main() {
 						if err != nil {
 							log.Fatal(err)
 						}
+						op = "Copy"
 					}
-					fmt.Printf("%s %s to %s\n", op, path+"/"+file.Name(), output+"/"+file.Name())
+					fmt.Printf("%s %s to %s\n", op, input+"/"+file.Name(), output+"/"+file.Name())
 					i++
 				}
 			}
