@@ -78,7 +78,7 @@ func main() {
 				}
 				fileSet[file.Name()] = struct{}{}
 				from := input + string(filepath.Separator) + file.Name()
-				to := output + string(filepath.Separator) + strconv.Itoa(i) + filepath.Ext(file.Name())
+				to := output + string(filepath.Separator) + strconv.Itoa(i) + strconv.FormatInt(time.Now().Unix(), 10) + filepath.Ext(file.Name())
 				op := "Pick"
 				if input == output {
 					// Do nothing
