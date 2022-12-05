@@ -69,17 +69,29 @@ func main() {
 			if err != nil {
 				return err
 			}
-			//fmt.Printf("%s: %d", projectName, commitCount)
-			fmt.Println("project,branch,sha,date,author,filename,filetype,operation,add,del,blankAdd,syntaxChange,spacingChange")
+			file, err := os.OpenFile(projectId+"_"+projectName+"_"+branch+"_"+since+"~"+until+".csv", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,blankAdd,syntaxChange,spacingChange")
+			if err != nil {
+				return err
+			}
 			for _, commit := range commits {
 				diffs, err := getDiff(projectId, commit.ShortId)
 				if err != nil {
 					return err
 				}
 				for _, diff := range diffs {
-					fmt.Printf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d\r\n",
+					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d\r\n",
 						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate, commit.AuthorEmail,
 						diff.NewPath, diff.OldPath, "MODIFY", 1, 2, 3, 4, 5)
+					_, err = file.WriteString(row)
+					if err != nil {
+						return err
+					}
 				}
 			}
 			return nil
