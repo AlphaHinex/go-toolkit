@@ -77,7 +77,7 @@ func main() {
 			}
 			defer file.Close()
 
-			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,blankAdd,syntaxChange,spacingChange\r\n")
+			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,addW,delW\r\n")
 			if err != nil {
 				return err
 			}
@@ -95,10 +95,11 @@ func main() {
 					} else if diff.DeletedFile {
 						op = "DELETE"
 					}
-					add, del := parseDiff(diff.Diff)
-					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d\r\n",
+					// TODO ADD, DELETE not need to compute line of code
+					add, del, actAdd, actDel := parseDiff(diff.Diff)
+					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
 						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate[0:10], commit.AuthorEmail,
-						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, 3, 4, 5)
+						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 					_, err = file.WriteString(row)
 					if err != nil {
 						return err
@@ -231,22 +232,60 @@ func getDiff(projectId, commitShortId string) (diffs, error) {
 	return response, nil
 }
 
-func parseDiff(d string) (int, int) {
+func parseDiff(d string) (int, int, int, int) {
 	if len(d) == 0 {
-		return 0, 0
+		return 0, 0, 0, 0
 	}
+
+	addLines := 0
+	delLines := 0
+	addLinesIgnoreSpace := 0
+	delLinesIgnoreSpace := 0
+
 	rows := strings.Split(d, "\n")
-	var del []string
 	var add []string
-	for _, row := range rows {
-		if len(row) == 0 {
+	var del []string
+	for idx, row := range rows {
+		if idx == len(rows)-1 || (len(row) > 0 && row[0] == '@') {
+			// compute first
+			i0, i1, i2, i3 := computeLoC(add, del)
+			addLines += i0
+			delLines += i1
+			addLinesIgnoreSpace += i2
+			delLinesIgnoreSpace += i3
+			// and then reset
+			add = []string{}
+			del = []string{}
+			continue
+		} else if len(row) == 0 {
 			continue
 		}
+
 		if row[0] == '-' {
-			del = append(del, strings.TrimLeft(row, "-"))
+			del = append(del, strings.ReplaceAll(strings.TrimLeft(row, "-"), " ", ""))
 		} else if row[0] == '+' {
-			add = append(add, strings.TrimLeft(row, "+"))
+			add = append(add, strings.ReplaceAll(strings.TrimLeft(row, "+"), " ", ""))
 		}
 	}
-	return len(add), len(del)
+
+	return addLines, delLines, addLinesIgnoreSpace, delLinesIgnoreSpace
+}
+
+func computeLoC(add, del []string) (int, int, int, int) {
+	addLinesIgnoreSpace := len(add)
+	delLinesIgnoreSpace := len(del)
+
+	inner := 0
+	for _, addContent := range add {
+		for j := inner; j < len(del); j++ {
+			if addContent == del[j] {
+				addLinesIgnoreSpace--
+				delLinesIgnoreSpace--
+				inner = j
+				break
+			}
+		}
+	}
+
+	return len(add), len(del), addLinesIgnoreSpace, delLinesIgnoreSpace
 }
