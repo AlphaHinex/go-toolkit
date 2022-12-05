@@ -75,7 +75,7 @@ func main() {
 			}
 			defer file.Close()
 
-			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,blankAdd,syntaxChange,spacingChange")
+			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,blankAdd,syntaxChange,spacingChange\r\n")
 			if err != nil {
 				return err
 			}
