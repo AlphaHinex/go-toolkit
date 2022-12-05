@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var host string
@@ -275,13 +276,12 @@ func computeLoC(add, del []string) (int, int, int, int) {
 	addLinesIgnoreSpace := len(add)
 	delLinesIgnoreSpace := len(del)
 
-	inner := 0
 	for _, addContent := range add {
-		for j := inner; j < len(del); j++ {
-			if addContent == del[j] {
+		for i, delContent := range del {
+			if addContent == delContent {
 				addLinesIgnoreSpace--
 				delLinesIgnoreSpace--
-				inner = j
+				del[i] = "IGNORE_AT_" + strconv.FormatInt(time.Now().Unix(), 10)
 				break
 			}
 		}
