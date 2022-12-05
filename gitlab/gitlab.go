@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 var host string
@@ -58,18 +60,18 @@ func main() {
 			token = cCtx.String("access-token")
 			projectId := cCtx.String("project-id")
 			branch := cCtx.String("branch")
-			since := cCtx.String("since") + "T00:00:00"
-			until := cCtx.String("until") + "T23:59:59"
+			since := cCtx.String("since")
+			until := cCtx.String("until")
 
 			projectName, commitCount, err := getProjectInfo(projectId)
 			if err != nil {
 				return err
 			}
-			commits, err := getCommits(projectId, branch, since, until, commitCount)
+			commits, err := getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitCount)
 			if err != nil {
 				return err
 			}
-			file, err := os.OpenFile(projectId+"_"+projectName+"_"+branch+"_"+since+"~"+until+".csv", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+			file, err := os.OpenFile(projectId+"_"+projectName+"_"+branch+"_"+since+"~"+until+".csv", os.O_WRONLY|os.O_CREATE, 0666)
 			if err != nil {
 				return err
 			}
@@ -85,9 +87,18 @@ func main() {
 					return err
 				}
 				for _, diff := range diffs {
+					op := "MODIFY"
+					if diff.NewFile {
+						op = "ADD"
+					} else if diff.RenamedFile {
+						op = "RENAME"
+					} else if diff.DeletedFile {
+						op = "DELETE"
+					}
+					add, del := parseDiff(diff.Diff)
 					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d\r\n",
-						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate, commit.AuthorEmail,
-						diff.NewPath, diff.OldPath, "MODIFY", 1, 2, 3, 4, 5)
+						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate[0:10], commit.AuthorEmail,
+						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, 3, 4, 5)
 					_, err = file.WriteString(row)
 					if err != nil {
 						return err
@@ -218,4 +229,24 @@ func getDiff(projectId, commitShortId string) (diffs, error) {
 		return nil, err
 	}
 	return response, nil
+}
+
+func parseDiff(d string) (int, int) {
+	if len(d) == 0 {
+		return 0, 0
+	}
+	rows := strings.Split(d, "\n")
+	var del []string
+	var add []string
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		if row[0] == '-' {
+			del = append(del, strings.TrimLeft(row, "-"))
+		} else if row[0] == '+' {
+			add = append(add, strings.TrimLeft(row, "+"))
+		}
+	}
+	return len(add), len(del)
 }
