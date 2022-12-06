@@ -192,7 +192,7 @@ func consumeCommit(projectId, projectName, branch string, commitChannel chan com
 					}
 					add, del, actAdd, actDel := parseDiff(diff.Diff)
 					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
-						projectId, projectName, branch, c.ShortId, c.AuthoredDate[0:10], c.AuthorEmail,
+						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
 			}
@@ -202,6 +202,18 @@ func consumeCommit(projectId, projectName, branch string, commitChannel chan com
 
 	wg.Wait()
 	close(rowChannel)
+}
+
+func toCSTStr(timestamp string) string {
+	t, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 将解析出来的时间设置为东八区
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	t = t.In(loc)
+	return t.Format("2006-01-02 15:04:05")
 }
 
 type diffs []diff
