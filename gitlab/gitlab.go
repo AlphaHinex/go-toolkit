@@ -6,6 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,11 +65,11 @@ func main() {
 			since := cCtx.String("since")
 			until := cCtx.String("until")
 
-			projectName, commitCount, err := getProjectInfo(projectId)
+			projectName, err := getProjectInfo(projectId)
 			if err != nil {
 				return err
 			}
-			commits, err := getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitCount)
+			commits, err := getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59")
 			if err != nil {
 				return err
 			}
@@ -117,41 +118,36 @@ func main() {
 }
 
 type project struct {
-	Name       string
-	Statistics projectStatistics `json:"statistics"`
+	Name string
 }
 
-type projectStatistics struct {
-	CommitCount int `json:"commit_count"`
-}
-
-func getProjectInfo(projectId string) (string, int, error) {
+func getProjectInfo(projectId string) (string, error) {
 	url := host + "/api/v4/projects/" + projectId + "?statistics=true"
 	method := "GET"
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	req.Header.Add("PRIVATE-TOKEN", token)
 
 	res, err := client.Do(req)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	var response project
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
-	return response.Name, response.Statistics.CommitCount, nil
+	return response.Name, nil
 }
 
 type commit struct {
@@ -162,8 +158,9 @@ type commit struct {
 
 type commits []commit
 
-func getCommits(projectId, branch, since, until string, pageSize int) (commits, error) {
-	url := host + "/api/v4/projects/" + projectId + "/repository/commits?ref_name=" + branch + "&since=" + since + "&until=" + until + "&per_page=" + strconv.Itoa(pageSize)
+func getCommits(projectId, branch, since, until string) (commits, error) {
+	url := host + "/api/v4/projects/" + projectId + "/repository/commits?ref_name=" + branch + "&since=" + since + "&until=" + until + "&per_page=" + strconv.Itoa(math.MaxInt32)
+	fmt.Println(url)
 	method := "GET"
 
 	client := &http.Client{}
