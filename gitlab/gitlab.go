@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 var host string
 var token string
-var pageSize = 99
+
+const pageSize = 99
+const parallel = 10
 
 func main() {
 	app := &cli.App{
@@ -69,10 +72,10 @@ func main() {
 			if err != nil {
 				return err
 			}
-			commits, err := getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59")
-			if err != nil {
-				return err
-			}
+
+			commitChannel := make(chan commit, 1000)
+			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel)
+
 			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, projectName, branch, since, until)
 			_ = os.Remove(filename)
 			file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
@@ -85,28 +88,14 @@ func main() {
 			if err != nil {
 				return err
 			}
-			for _, commit := range commits {
-				diffs, err := getDiff(projectId, commit.ShortId)
+
+			rowChannel := make(chan string, 1000)
+			go consumeCommit(projectId, projectName, branch, commitChannel, rowChannel)
+
+			for row := range rowChannel {
+				_, err = file.WriteString(row)
 				if err != nil {
 					return err
-				}
-				for _, diff := range diffs {
-					op := "MODIFY"
-					if diff.NewFile {
-						op = "ADD"
-					} else if diff.RenamedFile {
-						op = "RENAME"
-					} else if diff.DeletedFile {
-						op = "DELETE"
-					}
-					add, del, actAdd, actDel := parseDiff(diff.Diff)
-					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
-						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate[0:10], commit.AuthorEmail,
-						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
-					_, err = file.WriteString(row)
-					if err != nil {
-						return err
-					}
 				}
 			}
 			return nil
@@ -151,33 +140,68 @@ func getProjectInfo(projectId string) (string, error) {
 	return response.Name, nil
 }
 
+type commits []commit
+
 type commit struct {
 	ShortId      string `json:"short_id"`
 	AuthorEmail  string `json:"author_email"`
 	AuthoredDate string `json:"authored_date"`
 }
 
-type commits []commit
-
-func getCommits(projectId, branch, since, until string) (commits, error) {
+func getCommits(projectId, branch, since, until string, ch chan commit) {
 	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s&",
 		host, projectId, branch, since, until)
 
 	allData, err := getAllPageData(url)
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
 
-	var result commits
 	for _, data := range allData {
 		var response commits
 		err = json.Unmarshal(data, &response)
 		if err != nil {
-			return nil, err
+			log.Fatal(err)
 		}
-		result = append(result, response...)
+		for _, c := range response {
+			ch <- c
+		}
 	}
-	return result, nil
+	close(ch)
+}
+
+func consumeCommit(projectId, projectName, branch string, commitChannel chan commit, rowChannel chan string) {
+	wg := sync.WaitGroup{}
+	wg.Add(parallel)
+
+	for i := 0; i < parallel; i++ {
+		go func() {
+			for c := range commitChannel {
+				diffs, err := getDiff(projectId, c.ShortId)
+				if err != nil {
+					log.Fatal(err)
+				}
+				for _, diff := range diffs {
+					op := "MODIFY"
+					if diff.NewFile {
+						op = "ADD"
+					} else if diff.RenamedFile {
+						op = "RENAME"
+					} else if diff.DeletedFile {
+						op = "DELETE"
+					}
+					add, del, actAdd, actDel := parseDiff(diff.Diff)
+					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
+						projectId, projectName, branch, c.ShortId, c.AuthoredDate[0:10], c.AuthorEmail,
+						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
+				}
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	close(rowChannel)
 }
 
 type diffs []diff
