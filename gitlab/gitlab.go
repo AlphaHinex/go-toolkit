@@ -17,6 +17,7 @@ import (
 
 var host string
 var token string
+var pageSize = 99
 
 func main() {
 	app := &cli.App{
@@ -202,34 +203,59 @@ type diff struct {
 }
 
 func getDiff(projectId, commitShortId string) (diffs, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits/%s/diff?per_page=%d",
-		host, projectId, commitShortId, math.MaxInt32)
-	method := "GET"
+	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits/%s/diff?", host, projectId, commitShortId)
 
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
-
+	allData, err := getAllPageData(url)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("PRIVATE-TOKEN", token)
 
+	var result diffs
+	for _, data := range allData {
+		var response diffs
+		err = json.Unmarshal(data, &response)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, response...)
+	}
+	return result, nil
+}
+
+func getAllPageData(url string) ([][]byte, error) {
+	var allData [][]byte
+	page := "1"
+	for len(page) > 0 {
+		data, p, err := getDataByPage(url, page)
+		if err != nil {
+			return nil, err
+		}
+		page = p
+		allData = append(allData, data)
+	}
+	return allData, nil
+}
+
+func getDataByPage(url, page string) ([]byte, string, error) {
+	method := "GET"
+	client := &http.Client{}
+	req, err := http.NewRequest(method, fmt.Sprintf("%spage=%s&per_page=%d", url, page, pageSize), nil)
+
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Add("PRIVATE-TOKEN", token)
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	var response diffs
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return body, res.Header.Get("X-Next-Page"), nil
 }
 
 func parseDiff(d string) (int, int, int, int) {
