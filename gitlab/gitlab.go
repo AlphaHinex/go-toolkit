@@ -79,7 +79,7 @@ func main() {
 			}
 			defer file.Close()
 
-			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,addW,delW\r\n")
+			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
 			if err != nil {
 				return err
 			}
@@ -160,7 +160,6 @@ type commits []commit
 
 func getCommits(projectId, branch, since, until string) (commits, error) {
 	url := host + "/api/v4/projects/" + projectId + "/repository/commits?ref_name=" + branch + "&since=" + since + "&until=" + until + "&per_page=" + strconv.Itoa(math.MaxInt32)
-	fmt.Println(url)
 	method := "GET"
 
 	client := &http.Client{}
@@ -240,7 +239,7 @@ func parseDiff(d string) (int, int, int, int) {
 	addLinesIgnoreSpace := 0
 	delLinesIgnoreSpace := 0
 
-	rows := strings.Split(d, "\n")
+	rows := strings.Split(d, "\r\n")
 	var add []string
 	var del []string
 	for idx, row := range rows {
@@ -259,10 +258,21 @@ func parseDiff(d string) (int, int, int, int) {
 			continue
 		}
 
+		c := ""
 		if row[0] == '-' {
-			del = append(del, strings.ReplaceAll(strings.TrimLeft(row, "-"), " ", ""))
+			c = strings.ReplaceAll(strings.TrimLeft(row, "-"), " ", "")
+			if len(c) > 0 {
+				del = append(del, c)
+			} else {
+				delLines++
+			}
 		} else if row[0] == '+' {
-			add = append(add, strings.ReplaceAll(strings.TrimLeft(row, "+"), " ", ""))
+			c = strings.ReplaceAll(strings.TrimLeft(row, "+"), " ", "")
+			if len(c) > 0 {
+				add = append(add, c)
+			} else {
+				addLines++
+			}
 		}
 	}
 
@@ -278,11 +288,14 @@ func computeLoC(add, del []string) (int, int, int, int) {
 			if addContent == delContent {
 				addLinesIgnoreSpace--
 				delLinesIgnoreSpace--
-				del[i] = "IGNORE_AT_" + strconv.FormatInt(time.Now().Unix(), 10)
+				del[i] = "IGNORE_AT_" + strconv.FormatInt(time.Now().Unix(), 10) + del[i]
 				break
 			}
 		}
 	}
+	//for _, row := range del {
+	//	fmt.Println(row)
+	//}
 
 	return len(add), len(del), addLinesIgnoreSpace, delLinesIgnoreSpace
 }
