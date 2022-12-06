@@ -6,7 +6,6 @@ import (
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -162,33 +161,24 @@ type commit struct {
 type commits []commit
 
 func getCommits(projectId, branch, since, until string) (commits, error) {
-	url := host + "/api/v4/projects/" + projectId + "/repository/commits?ref_name=" + branch + "&since=" + since + "&until=" + until + "&per_page=" + strconv.Itoa(math.MaxInt32)
-	method := "GET"
+	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s",
+		host, projectId, branch, since, until)
 
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
-
+	allData, err := getAllPageData(url)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("PRIVATE-TOKEN", token)
 
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	var result commits
+	for _, data := range allData {
+		var response commits
+		err = json.Unmarshal(data, &response)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, response...)
 	}
-	defer res.Body.Close()
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	var response commits
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return result, nil
 }
 
 type diffs []diff
