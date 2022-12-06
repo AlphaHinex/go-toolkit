@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -9,11 +10,14 @@ func TestParseDiff(t *testing.T) {
 	i, i2, i3, i4 := parseDiff(diff)
 	if i != 114 {
 		t.Error("add lines != 114")
-	} else if i2 != 138 {
+	}
+	if i2 != 138 {
 		t.Error("del lines != 138")
-	} else if i3 != 22 {
-		t.Error("add ignore space lines != 22")
-	} else if i4 != 50 {
-		t.Error("del ignore space lines != 50")
+	}
+	if i3 != 22 {
+		t.Error(fmt.Sprintf("add ignore space lines expect 22, but got %d", i3))
+	}
+	if i4 != 50 {
+		t.Error(fmt.Sprintf("del ignore space lines expect 50, but got %d", i4))
 	}
 }

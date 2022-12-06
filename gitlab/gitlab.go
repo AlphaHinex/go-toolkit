@@ -73,7 +73,9 @@ func main() {
 			if err != nil {
 				return err
 			}
-			file, err := os.OpenFile(projectId+"_"+projectName+"_"+branch+"_"+since+"~"+until+".csv", os.O_WRONLY|os.O_CREATE, 0666)
+			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, projectName, branch, since, until)
+			_ = os.Remove(filename)
+			file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 			if err != nil {
 				return err
 			}
@@ -200,7 +202,8 @@ type diff struct {
 }
 
 func getDiff(projectId, commitShortId string) (diffs, error) {
-	url := host + "/api/v4/projects/" + projectId + "/repository/commits/" + commitShortId + "/diff"
+	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits/%s/diff?per_page=%d",
+		host, projectId, commitShortId, math.MaxInt32)
 	method := "GET"
 
 	client := &http.Client{}
@@ -239,7 +242,7 @@ func parseDiff(d string) (int, int, int, int) {
 	addLinesIgnoreSpace := 0
 	delLinesIgnoreSpace := 0
 
-	rows := strings.Split(d, "\r\n")
+	rows := strings.Split(d, "\n")
 	var add []string
 	var del []string
 	for idx, row := range rows {
@@ -260,14 +263,14 @@ func parseDiff(d string) (int, int, int, int) {
 
 		c := ""
 		if row[0] == '-' {
-			c = strings.ReplaceAll(strings.TrimLeft(row, "-"), " ", "")
+			c = strings.ReplaceAll(strings.ReplaceAll(strings.TrimLeft(row, "-"), " ", ""), "\r", "")
 			if len(c) > 0 {
 				del = append(del, c)
 			} else {
 				delLines++
 			}
 		} else if row[0] == '+' {
-			c = strings.ReplaceAll(strings.TrimLeft(row, "+"), " ", "")
+			c = strings.ReplaceAll(strings.ReplaceAll(strings.TrimLeft(row, "+"), " ", ""), "\r", "")
 			if len(c) > 0 {
 				add = append(add, c)
 			} else {
