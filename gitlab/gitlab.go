@@ -99,7 +99,6 @@ func main() {
 					} else if diff.DeletedFile {
 						op = "DELETE"
 					}
-					// TODO ADD, DELETE not need to compute line of code
 					add, del, actAdd, actDel := parseDiff(diff.Diff)
 					row := fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
 						projectId, projectName, branch, commit.ShortId, commit.AuthoredDate[0:10], commit.AuthorEmail,
@@ -161,7 +160,7 @@ type commit struct {
 type commits []commit
 
 func getCommits(projectId, branch, since, until string) (commits, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s",
+	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s&",
 		host, projectId, branch, since, until)
 
 	allData, err := getAllPageData(url)
