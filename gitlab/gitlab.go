@@ -68,6 +68,15 @@ func main() {
 				Name:  "lark",
 				Usage: "Lark webhook url",
 			},
+			&cli.IntFlag{
+				Name:  "commit-parents",
+				Value: -1,
+				Usage: "Only count the commit has `commit-parents` number parent(s), " +
+					"-1 means count all commits, " +
+					"0 means only count the initial commit, " +
+					"2 means only count merge request commit, " +
+					"1 means exclude initial commit and merge request commit",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			from := time.Now()
@@ -77,6 +86,7 @@ func main() {
 			branch := cCtx.String("branch")
 			since := cCtx.String("since")
 			until := cCtx.String("until")
+			parents := cCtx.Int("commit-parents")
 
 			proj, err := getProjectInfo(projectId)
 			if err != nil {
@@ -85,7 +95,7 @@ func main() {
 			log.Printf("Start to analyse %s ...\r\n", proj.Name)
 
 			commitChannel := make(chan commit, 1000)
-			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel)
+			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
 
 			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, proj.Name, branch, since, until)
 			_ = os.Remove(filename)
@@ -140,7 +150,22 @@ func main() {
 					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
 					r.commitCount, r.fileCount)
 			}
-			desc := `* effLines（有效代码行数）= 有效增加代码行数 + 有效减少代码行数
+			cp := "统计了所有 Commit"
+			switch parents {
+			case 2:
+				cp = "仅统计 Merge Request Commit"
+				break
+			case 1:
+				cp = "统计了除初始 Commit 和 Merge Request 外的所有 Commit"
+				break
+			case 0:
+				cp = "仅统计了初始 Commit"
+				break
+			default:
+				cp = "统计了 Parent 数量为 " + strconv.Itoa(parents) + " 的 Commit"
+			}
+			desc := `以上结果` + cp + `（时间范围内）
+* effLines（有效代码行数）= 有效增加代码行数 + 有效减少代码行数
 * effLines ratio（有效代码率）= 有效代码行数 / 总代码行数 * 100%
 * effAdds（有效增加行数）= 有效增加代码行数
 * effAdds ratio（有效增加率）= 有效增加代码行数 / 总增加代码行数 * 100%
@@ -253,12 +278,13 @@ func getProjectInfo(projectId string) (project, error) {
 type commits []commit
 
 type commit struct {
-	ShortId      string `json:"short_id"`
-	AuthorEmail  string `json:"author_email"`
-	AuthoredDate string `json:"authored_date"`
+	ShortId      string   `json:"short_id"`
+	AuthorEmail  string   `json:"author_email"`
+	AuthoredDate string   `json:"authored_date"`
+	ParentIds    []string `json:"parent_ids"`
 }
 
-func getCommits(projectId, branch, since, until string, ch chan commit) {
+func getCommits(projectId, branch, since, until string, ch chan commit, parents int) {
 	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s&",
 		host, projectId, branch, since, until)
 
@@ -274,6 +300,11 @@ func getCommits(projectId, branch, since, until string, ch chan commit) {
 			log.Fatal(err)
 		}
 		for _, c := range response {
+			if parents > -1 {
+				if len(c.ParentIds) != parents {
+					continue
+				}
+			}
 			ch <- c
 		}
 	}
