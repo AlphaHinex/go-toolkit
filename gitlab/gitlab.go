@@ -127,10 +127,12 @@ func main() {
 			results := getResults(userStat)
 			sort.Sort(results)
 
-			fmt.Println("No.\tauthor\teffective(ratio)\tcommits\tfiles")
+			fmt.Println("No.\tauthor\teffective(ratio)\teffectiveAdd(ratio)\tcommits\tfiles")
 			for i, r := range results {
-				fmt.Printf("#%d.\t%s\t%d(%f)\t%d\t%d\r\n", i+1, r.email, r.addIgnoreSpace+r.delIgnoreSpace,
-					float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del), r.commitCount, r.fileCount)
+				fmt.Printf("#%d.\t%s\t%d(%f)\t%d(%f)\t%d\t%d\r\n", i+1, r.email,
+					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del),
+					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add),
+					r.commitCount, r.fileCount)
 			}
 
 			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
