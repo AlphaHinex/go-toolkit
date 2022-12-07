@@ -369,7 +369,10 @@ func toCSTStr(timestamp string) string {
 	}
 
 	// 将解析出来的时间设置为东八区
-	loc, _ := time.LoadLocation("Asia/Shanghai")
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
 	t = t.In(loc)
 	return t.Format("2006-01-02 15:04:05")
 }
