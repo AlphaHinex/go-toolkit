@@ -132,18 +132,28 @@ func main() {
 			results := getResults(userStat)
 			sort.Sort(results)
 
-			fmt.Println("No.\tauthor\teffective(ratio)\teffectiveAdd(ratio)\tcommits\tfiles")
+			title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, branch, since, until)
+			content := fmt.Sprintf("No. %-25s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
 			for i, r := range results {
-				fmt.Printf("#%d.\t%s\t%d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.email,
+				content += fmt.Sprintf("%2d. %-25s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.email,
 					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
 					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
 					r.commitCount, r.fileCount)
 			}
+			desc := `* effLines（有效代码行数）= 有效增加代码行数 + 有效减少代码行数
+* effLines ratio（有效代码率）= 有效代码行数 / 总代码行数 * 100%
+* effAdds（有效增加行数）= 有效增加代码行数
+* effAdds ratio（有效增加率）= 有效增加代码行数 / 总增加代码行数 * 100%
+* commits：Commit 总数
+* files：文件总数（不去重）
+* 有效代码：忽略仅有空格或换行的代码改动，diff -w`
 
 			lark := cCtx.String("lark")
 			if len(lark) > 0 {
-				sendLarkMsg(lark, proj.Name, proj.WebUrl, branch, since, until, results)
+				sendLarkMsg(lark, proj.WebUrl, title, content, desc)
 			}
+
+			fmt.Printf("\r\n%s\r\n\r\n%s\r\n%s\r\n", title, content, desc)
 			return nil
 		},
 	}
@@ -153,28 +163,19 @@ func main() {
 	}
 }
 
-func sendLarkMsg(url, projectName, projectUrl, branch, since, until string, results Results) {
-	method := "POST"
-
-	content := "No.\\tauthor\\teffective(ratio)\\teffectiveAdd(ratio)\\tcommits\\tfiles\\r\\n"
-	for i, r := range results {
-		content += fmt.Sprintf("%d.\\t%s\\t%d(%.2f%%)\\t%d(%.2f%%)\\t%d\\t%d\\r\\n", i+1, r.email,
-			r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
-			r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
-			r.commitCount, r.fileCount)
-	}
-
+func sendLarkMsg(url, projectUrl, title, content, desc string) {
+	text := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(content+desc, "\t", "\\t"), "\r", "\\r"), "\n", "\\n")
 	payload := strings.NewReader(`{
     "msg_type": "post",
     "content": {
         "post": {
             "zh_cn": {
-                "title": "` + projectName + ` 项目 ` + branch + ` 分支分析结果（` + since + `~` + until + `）",
+                "title": "` + title + `",
                 "content": [
                     [
                         {
                             "tag": "text",
-                            "text": "` + content + `"
+                            "text": "` + text + `"
                         }
                     ],
                     [
@@ -192,8 +193,7 @@ func sendLarkMsg(url, projectName, projectUrl, branch, since, until string, resu
 `)
 
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, payload)
-	fmt.Println(payload)
+	req, err := http.NewRequest("POST", url, payload)
 
 	if err != nil {
 		fmt.Println(err)
@@ -213,7 +213,7 @@ func sendLarkMsg(url, projectName, projectUrl, branch, since, until string, resu
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(string(body))
+	log.Printf("Response from lark: %s\r\n", string(body))
 }
 
 type project struct {
