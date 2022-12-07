@@ -64,6 +64,10 @@ func main() {
 				Value: 16,
 				Usage: "Number of commit parsers",
 			},
+			&cli.StringFlag{
+				Name:  "lark",
+				Usage: "Lark webhook url",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			from := time.Now()
@@ -74,16 +78,16 @@ func main() {
 			since := cCtx.String("since")
 			until := cCtx.String("until")
 
-			projectName, err := getProjectInfo(projectId)
+			proj, err := getProjectInfo(projectId)
 			if err != nil {
 				return err
 			}
-			log.Printf("Start to analyse %s ...\r\n", projectName)
+			log.Printf("Start to analyse %s ...\r\n", proj.Name)
 
 			commitChannel := make(chan commit, 1000)
 			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel)
 
-			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, projectName, branch, since, until)
+			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, proj.Name, branch, since, until)
 			_ = os.Remove(filename)
 			file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 			if err != nil {
@@ -99,7 +103,7 @@ func main() {
 			parallel := cCtx.Int("parallel")
 			rowChannel := make(chan string, 1000)
 			statChannel := make(chan map[string]*stat, parallel)
-			go consumeCommit(projectId, projectName, branch, parallel, commitChannel, rowChannel, statChannel)
+			go consumeCommit(projectId, proj.Name, branch, parallel, commitChannel, rowChannel, statChannel)
 
 			for row := range rowChannel {
 				_, err = file.WriteString(row)
@@ -107,6 +111,7 @@ func main() {
 					return err
 				}
 			}
+			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
 
 			userStat := make(map[string]*stat)
 			for us := range statChannel {
@@ -135,7 +140,10 @@ func main() {
 					r.commitCount, r.fileCount)
 			}
 
-			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
+			lark := cCtx.String("lark")
+			if len(lark) > 0 {
+				sendLarkMsg(lark, proj.Name, proj.WebUrl, branch, since, until, results)
+			}
 			return nil
 		},
 	}
@@ -145,37 +153,101 @@ func main() {
 	}
 }
 
-type project struct {
-	Name string
+func sendLarkMsg(url, projectName, projectUrl, branch, since, until string, results Results) {
+	method := "POST"
+
+	content := "No.\\tauthor\\teffective(ratio)\\teffectiveAdd(ratio)\\tcommits\\tfiles\\r\\n"
+	for i, r := range results {
+		content += fmt.Sprintf("%d.\\t%s\\t%d(%f)\\t%d(%f)\\t%d\\t%d\\r\\n", i+1, r.email,
+			r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del),
+			r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add),
+			r.commitCount, r.fileCount)
+	}
+
+	payload := strings.NewReader(`{
+    "msg_type": "post",
+    "content": {
+        "post": {
+            "zh_cn": {
+                "title": "` + projectName + ` 项目 ` + branch + ` 分支分析结果（` + since + `~` + until + `）",
+                "content": [
+                    [
+                        {
+                            "tag": "text",
+                            "text": "` + content + `"
+                        }
+                    ],
+                    [
+                        {
+                            "tag": "a",
+                            "text": "GitLab 仓库地址",
+                            "href": "` + projectUrl + `"
+                        }
+                    ]
+                ]
+            }
+        }
+    } 
+}
+`)
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, payload)
+	fmt.Println(payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(body))
 }
 
-func getProjectInfo(projectId string) (string, error) {
+type project struct {
+	Name   string
+	WebUrl string `json:"web_url"`
+}
+
+func getProjectInfo(projectId string) (project, error) {
 	url := host + "/api/v4/projects/" + projectId + "?statistics=true"
 	method := "GET"
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		return "", err
+		return project{}, err
 	}
 	req.Header.Add("PRIVATE-TOKEN", token)
 
 	res, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return project{}, err
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return "", err
+		return project{}, err
 	}
 	var response project
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		return "", err
+		return project{}, err
 	}
-	return response.Name, nil
+	return response, nil
 }
 
 type commits []commit
