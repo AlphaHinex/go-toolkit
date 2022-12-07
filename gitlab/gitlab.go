@@ -19,7 +19,6 @@ var host string
 var token string
 
 const pageSize = 99
-const parallel = 10
 
 func main() {
 	app := &cli.App{
@@ -59,8 +58,14 @@ func main() {
 				Value: "2022-12-31",
 				Usage: "Date of until, to 23:59:59",
 			},
+			&cli.IntFlag{
+				Name:  "parallel",
+				Value: 16,
+				Usage: "Number of commit parsers",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			from := time.Now()
 			host = cCtx.String("url")
 			token = cCtx.String("access-token")
 			projectId := cCtx.String("project-id")
@@ -72,8 +77,9 @@ func main() {
 			if err != nil {
 				return err
 			}
+			log.Printf("Start to analyse %s ...\r\n", projectName)
 
-			commitChannel := make(chan commit, 1000)
+			commitChannel := make(chan commit, 4096)
 			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel)
 
 			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, projectName, branch, since, until)
@@ -89,8 +95,9 @@ func main() {
 				return err
 			}
 
-			rowChannel := make(chan string, 1000)
-			go consumeCommit(projectId, projectName, branch, commitChannel, rowChannel)
+			rowChannel := make(chan string, 4096)
+			parallel := cCtx.Int("parallel")
+			go consumeCommit(projectId, projectName, branch, commitChannel, rowChannel, parallel)
 
 			for row := range rowChannel {
 				_, err = file.WriteString(row)
@@ -98,6 +105,8 @@ func main() {
 					return err
 				}
 			}
+
+			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
 			return nil
 		},
 	}
@@ -168,9 +177,10 @@ func getCommits(projectId, branch, since, until string, ch chan commit) {
 		}
 	}
 	close(ch)
+	log.Println("Load all commits")
 }
 
-func consumeCommit(projectId, projectName, branch string, commitChannel chan commit, rowChannel chan string) {
+func consumeCommit(projectId, projectName, branch string, commitChannel chan commit, rowChannel chan string, parallel int) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
 
