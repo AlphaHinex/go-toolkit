@@ -107,10 +107,24 @@ func main() {
 				}
 			}
 
-			for user := range statChannel {
-				for key, value := range user {
-					fmt.Println(key, *value)
+			userStat := make(map[string]*stat)
+			for us := range statChannel {
+				for user, s := range us {
+					if _, exist := userStat[user]; exist {
+						userStat[user].add += s.add
+						userStat[user].del += s.del
+						userStat[user].addIgnoreSpace += s.addIgnoreSpace
+						userStat[user].delIgnoreSpace += s.delIgnoreSpace
+						userStat[user].fileCount += s.fileCount
+						userStat[user].commitCount += s.commitCount
+					} else {
+						userStat[user] = s
+					}
 				}
+			}
+
+			for key, value := range userStat {
+				fmt.Println(key, *value)
 			}
 
 			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
