@@ -134,9 +134,9 @@ func main() {
 
 			fmt.Println("No.\tauthor\teffective(ratio)\teffectiveAdd(ratio)\tcommits\tfiles")
 			for i, r := range results {
-				fmt.Printf("#%d.\t%s\t%d(%f)\t%d(%f)\t%d\t%d\r\n", i+1, r.email,
-					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del),
-					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add),
+				fmt.Printf("#%d.\t%s\t%d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.email,
+					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
+					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
 					r.commitCount, r.fileCount)
 			}
 
@@ -158,9 +158,9 @@ func sendLarkMsg(url, projectName, projectUrl, branch, since, until string, resu
 
 	content := "No.\\tauthor\\teffective(ratio)\\teffectiveAdd(ratio)\\tcommits\\tfiles\\r\\n"
 	for i, r := range results {
-		content += fmt.Sprintf("%d.\\t%s\\t%d(%f)\\t%d(%f)\\t%d\\t%d\\r\\n", i+1, r.email,
-			r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del),
-			r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add),
+		content += fmt.Sprintf("%d.\\t%s\\t%d(%.2f%%)\\t%d(%.2f%%)\\t%d\\t%d\\r\\n", i+1, r.email,
+			r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
+			r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
 			r.commitCount, r.fileCount)
 	}
 
