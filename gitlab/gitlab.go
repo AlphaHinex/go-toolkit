@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,8 +124,13 @@ func main() {
 				}
 			}
 
-			for key, value := range userStat {
-				fmt.Println(key, *value)
+			results := getResults(userStat)
+			sort.Sort(results)
+
+			fmt.Println("No.\tauthor\teffective(ratio)\tcommits\tfiles")
+			for i, r := range results {
+				fmt.Printf("#%d.\t%s\t%d(%f)\t%d\t%d\r\n", i+1, r.email, r.addIgnoreSpace+r.delIgnoreSpace,
+					float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del), r.commitCount, r.fileCount)
 			}
 
 			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
@@ -211,7 +217,9 @@ func consumeCommit(projectId, projectName, branch string, parallel int,
 			userMap := make(map[string]*stat)
 			for c := range commitChannel {
 				if _, exist := userMap[c.AuthorEmail]; !exist {
-					userMap[c.AuthorEmail] = &stat{}
+					userMap[c.AuthorEmail] = &stat{
+						email: c.AuthorEmail,
+					}
 				}
 				user := userMap[c.AuthorEmail]
 				user.commitCount++
@@ -400,10 +408,40 @@ func computeLoC(add, del []string) (int, int, int, int) {
 }
 
 type stat struct {
+	email          string
 	add            int
 	del            int
 	addIgnoreSpace int
 	delIgnoreSpace int
 	commitCount    int
 	fileCount      int
+}
+
+type Results []stat
+
+func getResults(userStat map[string]*stat) Results {
+	var results Results
+	for _, v := range userStat {
+		results = append(results, *v)
+	}
+	return results
+}
+
+func (re Results) Len() int { return len(re) }
+
+func (re Results) Swap(i, j int) { re[i], re[j] = re[j], re[i] }
+
+func (re Results) Less(i, j int) bool {
+	if re[i].addIgnoreSpace+re[i].delIgnoreSpace < re[j].addIgnoreSpace+re[j].delIgnoreSpace {
+		return false
+	} else if re[i].addIgnoreSpace+re[i].delIgnoreSpace == re[j].addIgnoreSpace+re[j].delIgnoreSpace {
+		if re[i].add+re[i].del > re[j].add+re[j].del {
+			return false
+		} else if re[i].add+re[i].del == re[j].add+re[j].del {
+			if re[i].fileCount < re[j].fileCount {
+				return false
+			}
+		}
+	}
+	return true
 }
