@@ -79,7 +79,7 @@ func main() {
 			}
 			log.Printf("Start to analyse %s ...\r\n", projectName)
 
-			commitChannel := make(chan commit, 4096)
+			commitChannel := make(chan commit, 1000)
 			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel)
 
 			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, projectName, branch, since, until)
@@ -95,14 +95,21 @@ func main() {
 				return err
 			}
 
-			rowChannel := make(chan string, 4096)
 			parallel := cCtx.Int("parallel")
-			go consumeCommit(projectId, projectName, branch, commitChannel, rowChannel, parallel)
+			rowChannel := make(chan string, 1000)
+			statChannel := make(chan map[string]*stat, parallel)
+			go consumeCommit(projectId, projectName, branch, parallel, commitChannel, rowChannel, statChannel)
 
 			for row := range rowChannel {
 				_, err = file.WriteString(row)
 				if err != nil {
 					return err
+				}
+			}
+
+			for user := range statChannel {
+				for key, value := range user {
+					fmt.Println(key, *value)
 				}
 			}
 
@@ -180,13 +187,20 @@ func getCommits(projectId, branch, since, until string, ch chan commit) {
 	log.Println("Load all commits")
 }
 
-func consumeCommit(projectId, projectName, branch string, commitChannel chan commit, rowChannel chan string, parallel int) {
+func consumeCommit(projectId, projectName, branch string, parallel int,
+	commitChannel chan commit, rowChannel chan string, statChannel chan map[string]*stat) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
 
 	for i := 0; i < parallel; i++ {
 		go func() {
+			userMap := make(map[string]*stat)
 			for c := range commitChannel {
+				if _, exist := userMap[c.AuthorEmail]; !exist {
+					userMap[c.AuthorEmail] = &stat{}
+				}
+				user := userMap[c.AuthorEmail]
+				user.commitCount++
 				diffs, err := getDiff(projectId, c.ShortId)
 				if err != nil {
 					log.Fatal(err)
@@ -201,17 +215,24 @@ func consumeCommit(projectId, projectName, branch string, commitChannel chan com
 						op = "DELETE"
 					}
 					add, del, actAdd, actDel := parseDiff(diff.Diff)
+					user.fileCount++
+					user.add += add
+					user.del += del
+					user.addIgnoreSpace += actAdd
+					user.delIgnoreSpace += actDel
 					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
 						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
 			}
+			statChannel <- userMap
 			wg.Done()
 		}()
 	}
 
 	wg.Wait()
 	close(rowChannel)
+	close(statChannel)
 }
 
 func toCSTStr(timestamp string) string {
@@ -362,4 +383,13 @@ func computeLoC(add, del []string) (int, int, int, int) {
 	//}
 
 	return len(add), len(del), addLinesIgnoreSpace, delLinesIgnoreSpace
+}
+
+type stat struct {
+	add            int
+	del            int
+	addIgnoreSpace int
+	delIgnoreSpace int
+	commitCount    int
+	fileCount      int
 }
