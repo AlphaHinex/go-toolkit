@@ -71,11 +71,11 @@ func main() {
 			&cli.IntFlag{
 				Name:  "commit-parents",
 				Value: -1,
-				Usage: "Only count the commit has `commit-parents` number parent(s), " +
-					"-1 means count all commits, " +
-					"0 means only count the initial commit, " +
-					"2 means only count merge request commit, " +
-					"1 means exclude initial commit and merge request commit",
+				Usage: "Only count the commit has `commit-parents` number parent(s), \r\n" +
+					"\t\t\t-1 means count all commits, \r\n" +
+					"\t\t\t0 means only count the initial commit, \n" +
+					"\t\t\t2 means only count merge request commit, \n" +
+					"\t\t\t1 means exclude initial commit and merge request commit",
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
