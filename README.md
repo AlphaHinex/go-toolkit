@@ -3,8 +3,10 @@ README
 
 Base on https://cli.urfave.org/
 
-random-pick
------------
+How to build
+------------
+
+Enter each folder to execute build command:
 
 ```bash
 $ cd random-pick
