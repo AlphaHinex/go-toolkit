@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/urfave/cli/v2"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,10 +14,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -48,30 +49,35 @@ func main() {
 				}
 				token = string(content)
 			}
-			files, err := os.ReadDir(src)
-			if err != nil {
-				return err
-			}
-
-			md := ""
-			errlog := ""
-			for _, file := range files {
-				if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
-					continue
-				}
-				link, err := upload(src+string(filepath.Separator)+file.Name(), token)
+			stat, _ := os.Stat(src)
+			if stat.IsDir() {
+				files, err := os.ReadDir(src)
 				if err != nil {
-					errlog += "Upload " + src + string(filepath.Separator) + file.Name() + " failed: " + err.Error() + "\r\n"
-					fmt.Printf("Failed to upload %s\r\n", file.Name())
-				} else {
-					md += "![](" + link + ")\r\n"
-					fmt.Printf("Upload %s done\r\n", file.Name())
+					return err
 				}
-			}
-			content := md + "\r\n---\r\n" + errlog
-			err = os.WriteFile(src+string(filepath.Separator)+"README.md", []byte(content), 0666)
-			if err != nil {
-				return err
+
+				md := ""
+				errLog := ""
+				for _, file := range files {
+					if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
+						continue
+					}
+					m, e := handleOneFile(src+string(filepath.Separator)+file.Name(), token)
+					md += m
+					errLog += e
+				}
+				if len(md) > 0 || len(errLog) > 0 {
+					content := md + "\r\n---\r\n" + errLog
+					err := os.WriteFile(src+string(filepath.Separator)+"README.md", []byte(content), 0666)
+					if err != nil {
+						return err
+					}
+				}
+			} else {
+				md, errLog := handleOneFile(src, token)
+				if len(md) > 0 || len(errLog) > 0 {
+					fmt.Println(md + "\r\n---\r\n" + errLog)
+				}
 			}
 			return nil
 		},
@@ -133,5 +139,51 @@ func upload(f string, token string) (string, error) {
 		return response.Data, nil
 	} else {
 		return "", errors.New(strconv.Itoa(response.Code) + ":" + response.Message)
+	}
+}
+
+func handleOneFile(filepath, token string) (string, string) {
+	if strings.HasPrefix(filepath, ".") {
+		return "", ""
+	}
+	if strings.HasSuffix(filepath, ".md") || strings.HasSuffix(filepath, ".markdown") {
+		uploadImgInMarkdown(filepath, token)
+		return "", ""
+	} else {
+		return uploadFile(filepath, token)
+	}
+}
+
+func uploadFile(filepath, token string) (string, string) {
+	md := ""
+	errLog := ""
+	link, err := upload(filepath, token)
+	if err != nil {
+		errLog = "Upload " + filepath + " failed: " + err.Error() + "\r\n"
+		fmt.Printf("Failed to upload %s\r\n", filepath)
+	} else {
+		md = "![](" + link + ")\r\n"
+		fmt.Printf("Upload %s done\r\n", filepath)
+	}
+	return md, errLog
+}
+
+func uploadImgInMarkdown(filepath, token string) {
+	reader, _ := os.Open(filepath)
+	buf := bufio.NewReader(reader)
+	pattern := `!\[.*\]\((.*)\)`
+	re := regexp.MustCompile(pattern)
+	for {
+		//遇到\n结束读取
+		line, errR := buf.ReadString('\n')
+		if errR == io.EOF {
+			_ = reader.Close()
+			break
+		}
+		for i, m := range re.FindStringSubmatch(line) {
+			if i == 1 {
+				fmt.Println(m)
+			}
+		}
 	}
 }
