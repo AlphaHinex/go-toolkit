@@ -37,10 +37,15 @@ func main() {
 				Name:  "token-file",
 				Usage: "Bearer token file of mdnice",
 			},
+			&cli.StringFlag{
+				Name:  "img-relative-path",
+				Usage: "Relative path of image link in markdown file",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			src := cCtx.String("i")
 			token := cCtx.String("token")
+			imgRelPath := cCtx.String("img-relative-path")
 			if token == "" {
 				tokenFilePath := cCtx.String("token-file")
 				content, err := os.ReadFile(tokenFilePath)
@@ -62,7 +67,7 @@ func main() {
 					if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
 						continue
 					}
-					m, e := handleOneFile(src+string(filepath.Separator)+file.Name(), token)
+					m, e := handleOneFile(src+string(filepath.Separator)+file.Name(), token, imgRelPath)
 					md += m
 					errLog += e
 				}
@@ -74,7 +79,7 @@ func main() {
 					}
 				}
 			} else {
-				md, errLog := handleOneFile(src, token)
+				md, errLog := handleOneFile(src, token, imgRelPath)
 				if len(md) > 0 || len(errLog) > 0 {
 					fmt.Println(md + "\r\n---\r\n" + errLog)
 				}
@@ -142,12 +147,12 @@ func upload(f string, token string) (string, error) {
 	}
 }
 
-func handleOneFile(filepath, token string) (string, string) {
+func handleOneFile(filepath, token, imgRelPath string) (string, string) {
 	if strings.HasPrefix(filepath, ".") {
 		return "", ""
 	}
 	if strings.HasSuffix(filepath, ".md") || strings.HasSuffix(filepath, ".markdown") {
-		uploadImgInMarkdown(filepath, token)
+		uploadImgInMarkdown(filepath, token, imgRelPath)
 		return "", ""
 	} else {
 		return uploadFile(filepath, token)
@@ -168,7 +173,7 @@ func uploadFile(filepath, token string) (string, string) {
 	return md, errLog
 }
 
-func uploadImgInMarkdown(filepath, token string) {
+func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 	reader, _ := os.Open(filepath)
 	buf := bufio.NewReader(reader)
 	pattern := `!\[.*\]\((.*)\)`
@@ -187,8 +192,12 @@ func uploadImgInMarkdown(filepath, token string) {
 					if strings.HasPrefix(imgPath, "http") {
 						fmt.Print(line)
 					} else {
-						//link, err := upload(filepath, token)
-						fmt.Print(re.ReplaceAllLiteralString(line, "${1}ABC"))
+						link, err := upload(imgRelPath+imgPath, token)
+						if err != nil {
+							fmt.Print(line)
+						} else {
+							fmt.Print(strings.ReplaceAll(line, imgPath, link))
+						}
 					}
 				}
 			}
