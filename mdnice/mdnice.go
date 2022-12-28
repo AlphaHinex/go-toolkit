@@ -180,10 +180,20 @@ func uploadImgInMarkdown(filepath, token string) {
 			_ = reader.Close()
 			break
 		}
-		for i, m := range re.FindStringSubmatch(line) {
-			if i == 1 {
-				fmt.Println(m)
+		if re.MatchString(line) {
+			for i, m := range re.FindStringSubmatch(line) {
+				if i == 1 {
+					imgPath := m
+					if strings.HasPrefix(imgPath, "http") {
+						fmt.Print(line)
+					} else {
+						//link, err := upload(filepath, token)
+						fmt.Print(re.ReplaceAllLiteralString(line, "${1}ABC"))
+					}
+				}
 			}
+		} else {
+			fmt.Print(line)
 		}
 	}
 }
