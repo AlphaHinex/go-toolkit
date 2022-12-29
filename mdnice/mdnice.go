@@ -155,25 +155,21 @@ func handleOneFile(filepath, token, imgRelPath string) (string, string) {
 		uploadImgInMarkdown(filepath, token, imgRelPath)
 		return "", ""
 	} else {
-		return uploadFile(filepath, token)
+		link, err := upload(filepath, token)
+		if err != nil {
+			fmt.Printf("Failed to upload %s\r\n", filepath)
+			return "", "Upload " + filepath + " failed: " + err.Error() + "\r\n"
+		} else {
+			fmt.Printf("Upload %s done\r\n", filepath)
+			return "![](" + link + ")\r\n", ""
+		}
 	}
-}
-
-func uploadFile(filepath, token string) (string, string) {
-	md := ""
-	errLog := ""
-	link, err := upload(filepath, token)
-	if err != nil {
-		errLog = "Upload " + filepath + " failed: " + err.Error() + "\r\n"
-		fmt.Printf("Failed to upload %s\r\n", filepath)
-	} else {
-		md = "![](" + link + ")\r\n"
-		fmt.Printf("Upload %s done\r\n", filepath)
-	}
-	return md, errLog
 }
 
 func uploadImgInMarkdown(filepath, token, imgRelPath string) {
+	newMarkdown := ""
+	errLogs := ""
+
 	reader, _ := os.Open(filepath)
 	buf := bufio.NewReader(reader)
 	pattern := `!\[.*\]\((.*)\)`
@@ -190,19 +186,25 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 				if i == 1 {
 					imgPath := m
 					if strings.HasPrefix(imgPath, "http") {
-						fmt.Print(line)
+						newMarkdown += line
 					} else {
 						link, err := upload(imgRelPath+imgPath, token)
 						if err != nil {
-							fmt.Print(line)
+							newMarkdown += line
+							errLogs += fmt.Sprintf("1. Upload %s failed with error %s\r\n", imgPath, err.Error())
 						} else {
-							fmt.Print(strings.ReplaceAll(line, imgPath, link))
+							newMarkdown += strings.ReplaceAll(line, imgPath, link)
 						}
 					}
 				}
 			}
 		} else {
-			fmt.Print(line)
+			newMarkdown += line
 		}
+	}
+
+	_ = os.WriteFile(filepath+"_mdnice.md", []byte(newMarkdown), 0666)
+	if len(errLogs) > 0 {
+		_ = os.WriteFile(filepath+"_err.md", []byte(errLogs), 0666)
 	}
 }
