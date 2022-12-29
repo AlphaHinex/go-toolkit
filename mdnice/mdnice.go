@@ -167,8 +167,7 @@ func handleOneFile(filepath, token, imgRelPath string) (string, string) {
 }
 
 func uploadImgInMarkdown(filepath, token, imgRelPath string) {
-	newMarkdown := ""
-	errLogs := ""
+	newMarkdown, errLogs, updated := "", "", false
 
 	reader, _ := os.Open(filepath)
 	buf := bufio.NewReader(reader)
@@ -177,10 +176,6 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 	for {
 		//遇到\n结束读取
 		line, errR := buf.ReadString('\n')
-		if errR == io.EOF {
-			_ = reader.Close()
-			break
-		}
 		if re.MatchString(line) {
 			for i, m := range re.FindStringSubmatch(line) {
 				if i == 1 {
@@ -191,9 +186,10 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 						link, err := upload(imgRelPath+imgPath, token)
 						if err != nil {
 							newMarkdown += line
-							errLogs += fmt.Sprintf("1. Upload %s failed with error %s\r\n", imgPath, err.Error())
+							errLogs += fmt.Sprintf("1. Upload %s failed with error: %s\r\n", imgPath, err)
 						} else {
 							newMarkdown += strings.ReplaceAll(line, imgPath, link)
+							updated = true
 						}
 					}
 				}
@@ -201,10 +197,21 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 		} else {
 			newMarkdown += line
 		}
+		if errR == io.EOF {
+			_ = reader.Close()
+			break
+		}
 	}
 
-	_ = os.WriteFile(filepath+"_mdnice.md", []byte(newMarkdown), 0666)
+	if updated {
+		_ = os.WriteFile(filepath+"_mdnice.md", []byte(newMarkdown), 0666)
+		fmt.Printf("Write updated content to %s", filepath+"_mdnice.md")
+	} else {
+		fmt.Printf("Nothing changed in %s", filepath)
+	}
 	if len(errLogs) > 0 {
 		_ = os.WriteFile(filepath+"_err.md", []byte(errLogs), 0666)
+		fmt.Printf(" with errors in %s", filepath+"_err.md")
 	}
+	fmt.Println()
 }
