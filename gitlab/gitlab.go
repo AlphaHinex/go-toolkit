@@ -105,7 +105,7 @@ func main() {
 			}
 			defer file.Close()
 
-			_, err = file.WriteString("project,branch,sha,date,author,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
+			_, err = file.WriteString("project,branch,sha,date,author,email,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
 			if err != nil {
 				return err
 			}
@@ -143,9 +143,9 @@ func main() {
 			sort.Sort(results)
 
 			title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, branch, since, until)
-			content := fmt.Sprintf("No. %-25s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
+			content := fmt.Sprintf("No. %-50s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
 			for i, r := range results {
-				content += fmt.Sprintf("%2d. %-25s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.email,
+				content += fmt.Sprintf("%2d. %-50s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.author+"("+r.email+")",
 					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
 					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
 					r.commitCount, r.fileCount)
@@ -279,6 +279,7 @@ type commits []commit
 
 type commit struct {
 	ShortId      string   `json:"short_id"`
+	AuthorName   string   `json:"author_name"`
 	AuthorEmail  string   `json:"author_email"`
 	AuthoredDate string   `json:"authored_date"`
 	ParentIds    []string `json:"parent_ids"`
@@ -323,7 +324,8 @@ func consumeCommit(projectId, projectName, branch string, parallel int,
 			for c := range commitChannel {
 				if _, exist := userMap[c.AuthorEmail]; !exist {
 					userMap[c.AuthorEmail] = &stat{
-						email: c.AuthorEmail,
+						email:  c.AuthorEmail,
+						author: c.AuthorName,
 					}
 				}
 				user := userMap[c.AuthorEmail]
@@ -347,8 +349,8 @@ func consumeCommit(projectId, projectName, branch string, parallel int,
 					user.del += del
 					user.addIgnoreSpace += actAdd
 					user.delIgnoreSpace += actDel
-					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
-						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorEmail,
+					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
+						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorName, c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
 			}
@@ -517,6 +519,7 @@ func computeLoC(add, del []string) (int, int, int, int) {
 
 type stat struct {
 	email          string
+	author         string
 	add            int
 	del            int
 	addIgnoreSpace int
