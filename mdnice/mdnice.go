@@ -158,7 +158,7 @@ func handleOneFile(filepath, token, imgRelPath string) (string, string) {
 		link, err := upload(filepath, token)
 		if err != nil {
 			fmt.Printf("Failed to upload %s\r\n", filepath)
-			return "", "Upload " + filepath + " failed: " + err.Error() + "\r\n"
+			return "", "1. Upload " + filepath + " failed: " + err.Error() + "\r\n"
 		} else {
 			fmt.Printf("Upload %s done\r\n", filepath)
 			return "![](" + link + ")\r\n", ""
