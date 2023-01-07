@@ -15,11 +15,11 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   -i value                   Path to be uploaded (default: ".")
-   --token value              Bearer token of mdnice
-   --token-file value         Bearer token file of mdnice
-   --img-relative-path value  Relative path of image link in markdown file
-   --help, -h                 show help (default: false)
+   -i value                 Path to be uploaded (default: ".")
+   --token value            Bearer token of mdnice
+   --token-file value       Bearer token file of mdnice
+   --img-path-prefix value  Path to add before image link (local file path) in markdown file
+   --help, -h               show help (default: false)
 ```
 
 批量上传图片
@@ -85,11 +85,14 @@ $ cat test.md
 ![png](/contents/covers/backend-skill-tree.png)
 
 [在线导图](https://www.processon.com/view/link/60f2d1b31efad41bbea9015e)
-# 上传本地图片，需根据实际情况传入 img-relative-path 参数，以获得本地图片文件的绝对路径
+# 上传本地图片
+# 可根据实际情况传入 img-path-prefix 参数，作为前缀加在 markdown 中图片 url 前面，用在无法直接根据 url 在本地文件系统找到对应图片文件的情况
+# 如果图片 url 直接使用的图片文件的绝对或相对路径，此参数非必须
 $ ./mdnice \
 --token-file ./token \
---img-relative-path /Users/alphahinex/github/origin/AlphaHinex.github.io/source \
+--img-path-prefix /Users/alphahinex/github/origin/AlphaHinex.github.io/source \
 -i test.md
+2023/01/07 20:01:02 [DEBUG] Upload /Users/alphahinex/github/origin/AlphaHinex.github.io/source/contents/covers/backend-skill-tree.png to mdnice...
 Write updated content to test.md_mdnice.md
 # 查看替换图片链接后的 markdown 文档内容
 $ cat test.md_mdnice.md
