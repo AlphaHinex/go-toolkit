@@ -52,7 +52,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				token = string(content)
+				token = strings.Split(string(content), "\n")[0]
 			}
 			stat, _ := os.Stat(src)
 			if stat.IsDir() {
