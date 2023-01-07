@@ -38,14 +38,14 @@ func main() {
 				Usage: "Bearer token file of mdnice",
 			},
 			&cli.StringFlag{
-				Name:  "img-relative-path",
-				Usage: "Relative path of image link in markdown file",
+				Name:  "img-path-prefix",
+				Usage: "Path to add before image link (local file path) in markdown file",
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			src := cCtx.String("i")
 			token := cCtx.String("token")
-			imgRelPath := cCtx.String("img-relative-path")
+			imgPathPrefix := cCtx.String("img-path-prefix")
 			if token == "" {
 				tokenFilePath := cCtx.String("token-file")
 				content, err := os.ReadFile(tokenFilePath)
@@ -67,7 +67,7 @@ func main() {
 					if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
 						continue
 					}
-					m, e := handleOneFile(src+string(filepath.Separator)+file.Name(), token, imgRelPath)
+					m, e := handleOneFile(src+string(filepath.Separator)+file.Name(), token, imgPathPrefix)
 					md += m
 					errLog += e
 				}
@@ -79,7 +79,7 @@ func main() {
 					}
 				}
 			} else {
-				md, errLog := handleOneFile(src, token, imgRelPath)
+				md, errLog := handleOneFile(src, token, imgPathPrefix)
 				if len(md) > 0 || len(errLog) > 0 {
 					fmt.Println(md + "\r\n---\r\n" + errLog)
 				}
@@ -147,12 +147,12 @@ func upload(f string, token string) (string, error) {
 	}
 }
 
-func handleOneFile(filepath, token, imgRelPath string) (string, string) {
+func handleOneFile(filepath, token, imgPathPrefix string) (string, string) {
 	if strings.HasPrefix(filepath, ".") {
 		return "", ""
 	}
 	if strings.HasSuffix(filepath, ".md") || strings.HasSuffix(filepath, ".markdown") {
-		uploadImgInMarkdown(filepath, token, imgRelPath)
+		uploadImgInMarkdown(filepath, token, imgPathPrefix)
 		return "", ""
 	} else {
 		link, err := upload(filepath, token)
@@ -166,10 +166,10 @@ func handleOneFile(filepath, token, imgRelPath string) (string, string) {
 	}
 }
 
-func uploadImgInMarkdown(filepath, token, imgRelPath string) {
+func uploadImgInMarkdown(mdFilePath, token, imgPathPrefix string) {
 	newMarkdown, errLogs, updated := "", "", false
 
-	reader, _ := os.Open(filepath)
+	reader, _ := os.Open(mdFilePath)
 	buf := bufio.NewReader(reader)
 	pattern := `!\[.*\]\((.*)\)`
 	re := regexp.MustCompile(pattern)
@@ -183,7 +183,13 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 					if strings.HasPrefix(imgPath, "http") {
 						newMarkdown += line
 					} else {
-						link, err := upload(imgRelPath+imgPath, token)
+						absPath, err := filepath.Abs(imgPath)
+						if err != nil {
+							log.Printf("[WARN] Could not get abs path of %s.\r\n", imgPath)
+							absPath = imgPath
+						}
+						log.Printf("[DEBUG] Upload %s to mdnice...", imgPathPrefix+absPath)
+						link, err := upload(imgPathPrefix+absPath, token)
 						if err != nil {
 							newMarkdown += line
 							errLogs += fmt.Sprintf("1. Upload %s failed with error: %s\r\n", imgPath, err)
@@ -204,14 +210,14 @@ func uploadImgInMarkdown(filepath, token, imgRelPath string) {
 	}
 
 	if updated {
-		_ = os.WriteFile(filepath+"_mdnice.md", []byte(newMarkdown), 0666)
-		fmt.Printf("Write updated content to %s", filepath+"_mdnice.md")
+		_ = os.WriteFile(mdFilePath+"_mdnice.md", []byte(newMarkdown), 0666)
+		fmt.Printf("Write updated content to %s", mdFilePath+"_mdnice.md")
 	} else {
-		fmt.Printf("Nothing changed in %s", filepath)
+		fmt.Printf("Nothing changed in %s", mdFilePath)
 	}
 	if len(errLogs) > 0 {
-		_ = os.WriteFile(filepath+"_err.md", []byte(errLogs), 0666)
-		fmt.Printf(" with errors in %s", filepath+"_err.md")
+		_ = os.WriteFile(mdFilePath+"_err.md", []byte(errLogs), 0666)
+		fmt.Printf(" with errors in %s", mdFilePath+"_err.md")
 	}
 	fmt.Println()
 }
