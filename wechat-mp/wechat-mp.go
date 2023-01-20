@@ -32,17 +32,23 @@ func main() {
 				Value: ".",
 				Usage: "Output path of statistic data",
 			},
+			&cli.StringFlag{
+				Name:  "dingtalk-token",
+				Usage: "DingTalk token to send msg to robot",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			token := cCtx.Int("token")
 			cookieFilePath := cCtx.String("cookie-file")
 			outputPath := cCtx.String("o")
+			dingTalkToken := cCtx.String("dingtalk-token")
+
 			content, err := os.ReadFile(cookieFilePath)
 			if err != nil {
 				return err
 			}
 			cookie := strings.Split(string(content), "\n")[0]
-			growDetails(token, cookie, outputPath)
+			growDetails(token, cookie, outputPath, dingTalkToken)
 			return nil
 		},
 	}
@@ -64,7 +70,7 @@ type postStat struct {
 	Like       int    `json:"like"`
 }
 
-func growDetails(token int, cookie, outputPath string) {
+func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 	filename := filepath.Join(outputPath, fmt.Sprintf("%d", token))
 	content, err := os.ReadFile(filename)
 	if err != nil {
@@ -78,6 +84,7 @@ func growDetails(token int, cookie, outputPath string) {
 
 	getPageData(cookie, token, 0)
 
+	var msg []string
 	for key, val := range postMap {
 		changed := true
 		if _, exist := lastStat[key]; exist {
@@ -92,11 +99,12 @@ func growDetails(token int, cookie, outputPath string) {
 			}
 		}
 		if changed {
-			fmt.Printf("1. [%s](%s) %d/%d/%d => %d/%d/%d\r\n", val.Title, val.ContentUrl,
+			msg = append(msg, fmt.Sprintf("1. [%s](%s) %d/%d/%d => %d/%d/%d\r\n", val.Title, val.ContentUrl,
 				lastStat[key].Read, lastStat[key].Look, lastStat[key].Like,
-				val.Read, val.Look, val.Like)
+				val.Read, val.Look, val.Like))
 		}
 	}
+	sendToDingTalk(msg, dingTalkToken)
 
 	data, err := json.Marshal(postMap)
 	if err != nil {
@@ -260,4 +268,42 @@ func parsePageData(pageData string) int {
 	}
 
 	return pageResponse.TotalCount
+}
+
+func sendToDingTalk(msg []string, dingTalkToken string) {
+	if len(dingTalkToken) == 0 || len(msg) == 0 {
+		return
+	}
+	url := "https://oapi.dingtalk.com/robot/send?access_token=" + dingTalkToken
+	method := "POST"
+
+	payload := strings.NewReader(`{
+    "markdown": {
+        "title": "公众号阅读量统计",
+        "text": "` + strings.Join(msg, "") + `"
+    },
+    "msgtype": "markdown"
+}`)
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	_, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }
