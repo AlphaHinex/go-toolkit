@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -17,15 +19,9 @@ func main() {
 		Name:  "wechat-mp",
 		Usage: "Get statistic info of wechat mp",
 		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:     "token",
-				Aliases:  []string{"t"},
-				Required: true,
-				Usage:    "Token used in URL",
-			},
 			&cli.StringFlag{
 				Name:  "cookie-file",
-				Usage: "Token file of wechat mp",
+				Usage: "Cookie value of wechat mp site saved in file",
 			},
 			&cli.StringFlag{
 				Name:  "o",
@@ -38,7 +34,6 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			token := cCtx.Int("token")
 			cookieFilePath := cCtx.String("cookie-file")
 			outputPath := cCtx.String("o")
 			dingTalkToken := cCtx.String("dingtalk-token")
@@ -48,6 +43,12 @@ func main() {
 				return err
 			}
 			cookie := strings.Split(string(content), "\n")[0]
+
+			token, err := getToken(cookie)
+			if err != nil {
+				return err
+			}
+
 			growDetails(token, cookie, outputPath, dingTalkToken)
 			return nil
 		},
@@ -55,6 +56,30 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func getToken(cookie string) (int, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://mp.weixin.qq.com/", nil)
+	if err != nil {
+		return -1, err
+	}
+	req.Header.Add("Cookie", cookie)
+	res, err := client.Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer res.Body.Close()
+
+	// /cgi-bin/home?t=home/index&lang=zh_CN&token=451063539
+	strs := strings.Split(res.Request.Response.Header.Get("Location"), "token=")
+	if len(strs) != 2 {
+		log.Printf("Location in header: %s", strs)
+		return -1, errors.New("could not get token")
+	} else {
+		token, err := strconv.Atoi(strs[1])
+		return token, err
 	}
 }
 
@@ -71,7 +96,8 @@ type postStat struct {
 }
 
 func growDetails(token int, cookie, outputPath, dingTalkToken string) {
-	filename := filepath.Join(outputPath, fmt.Sprintf("%d", token))
+	slaveUser := getSlaveUserFromCookie(cookie)
+	filename := filepath.Join(outputPath, fmt.Sprintf("%s", slaveUser))
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		fmt.Println(err)
@@ -116,6 +142,13 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func getSlaveUserFromCookie(cookie string) string {
+	key := "slave_user="
+	idx := strings.Index(cookie, key)
+	slaveUser := cookie[idx+len(key):]
+	return slaveUser[0:strings.Index(slaveUser, ";")]
 }
 
 func getPageData(cookie string, token, from int) {
