@@ -85,7 +85,7 @@ func getToken(cookie string) (int, error) {
 
 var lastStat = map[int64]postStat{}
 var postMap = map[int64]postStat{}
-var totalReadInc, totalLookInc, totalLikeInc = 0, 0, 0
+var totalReadInc, totalLookInc, totalLikeInc, count, totalRead = 0, 0, 0, 0, 0
 
 type postStat struct {
 	Time       int    `json:"time"`
@@ -113,6 +113,8 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 
 	var msg []string
 	for key, val := range postMap {
+		count++
+		totalRead += val.Read
 		changed := true
 		if _, exist := lastStat[key]; exist {
 			if lastStat[key] == val {
@@ -126,12 +128,17 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 			}
 		}
 		if changed {
-			totalReadInc += val.Read - lastStat[key].Read
-			totalLookInc += val.Look - lastStat[key].Look
-			totalLikeInc += val.Like - lastStat[key].Like
-			msg = append(msg, fmt.Sprintf("1. [%s](%s) %d/%d/%d => %d/%d/%d\r\n", val.Title, val.ContentUrl,
-				lastStat[key].Read, lastStat[key].Look, lastStat[key].Like,
-				val.Read, val.Look, val.Like))
+			readInc := val.Read - lastStat[key].Read
+			lookInc := val.Look - lastStat[key].Look
+			likeInc := val.Like - lastStat[key].Like
+			if readInc > 0 || lookInc > 0 || likeInc > 0 {
+				totalReadInc += readInc
+				totalLookInc += lookInc
+				totalLikeInc += likeInc
+				msg = append(msg, fmt.Sprintf("1. [%s](%s) ↑ %d/%d/%d => 📖%d/👍%d/👀%d\r\n", val.Title, val.ContentUrl,
+					readInc, likeInc, lookInc,
+					val.Read, val.Like, val.Look))
+			}
 		}
 	}
 	sendToDingTalk(msg, dingTalkToken)
@@ -308,26 +315,20 @@ func parsePageData(pageData string) int {
 }
 
 func sendToDingTalk(msg []string, dingTalkToken string) {
+	payload := strings.NewReader(fmt.Sprintf(`{
+    "markdown": {
+        "title": "公众号阅读量统计",
+        "text": "## 公众号阅读量统计\r\n阅读/点赞/在看增加：%d/%d/%d\r\n文章总数：%d\r\n总阅读量：%d\r\n---%s"
+    },
+    "msgtype": "markdown"
+}`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, "")))
+	fmt.Println(payload)
+
 	if len(dingTalkToken) == 0 || len(msg) == 0 {
 		return
 	}
-	url := "https://oapi.dingtalk.com/robot/send?access_token=" + dingTalkToken
-	method := "POST"
-
-	payload := strings.NewReader(`{
-    "markdown": {
-        "title": "公众号阅读量统计",
-        "text": "## 公众号阅读量统计\r\n阅读增加：` + strconv.Itoa(totalReadInc) +
-		`\r\n在看增加：` + strconv.Itoa(totalLookInc) +
-		`\r\n点赞增加：` + strconv.Itoa(totalLikeInc) +
-		`\r\n` + strings.Join(msg, "") + `"
-    },
-    "msgtype": "markdown"
-}`)
-	fmt.Println(payload)
-
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, payload)
+	req, err := http.NewRequest("POST", "https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, payload)
 
 	if err != nil {
 		fmt.Println(err)
