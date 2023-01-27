@@ -85,6 +85,7 @@ func getToken(cookie string) (int, error) {
 
 var lastStat = map[int64]postStat{}
 var postMap = map[int64]postStat{}
+var totalReadInc, totalLookInc, totalLikeInc = 0, 0, 0
 
 type postStat struct {
 	Time       int    `json:"time"`
@@ -125,6 +126,9 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 			}
 		}
 		if changed {
+			totalReadInc += val.Read - lastStat[key].Read
+			totalLookInc += val.Look - lastStat[key].Look
+			totalLikeInc += val.Like - lastStat[key].Like
 			msg = append(msg, fmt.Sprintf("1. [%s](%s) %d/%d/%d => %d/%d/%d\r\n", val.Title, val.ContentUrl,
 				lastStat[key].Read, lastStat[key].Look, lastStat[key].Like,
 				val.Read, val.Look, val.Like))
@@ -313,10 +317,14 @@ func sendToDingTalk(msg []string, dingTalkToken string) {
 	payload := strings.NewReader(`{
     "markdown": {
         "title": "公众号阅读量统计",
-        "text": "` + strings.Join(msg, "") + `"
+        "text": "## 公众号阅读量统计\r\n阅读增加：` + strconv.Itoa(totalReadInc) +
+		`\r\n在看增加：` + strconv.Itoa(totalLookInc) +
+		`\r\n点赞增加：` + strconv.Itoa(totalLikeInc) +
+		`\r\n` + strings.Join(msg, "") + `"
     },
     "msgtype": "markdown"
 }`)
+	fmt.Println(payload)
 
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, payload)
