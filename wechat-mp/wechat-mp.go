@@ -142,7 +142,25 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 			}
 		}
 	}
-	sendToDingTalk(msg, dingTalkToken)
+
+	sort.Sort(growthFactorDecrement(msg))
+	statInfo := fmt.Sprintf(`## 公众号阅读量统计
+📖/👍/👀增加：%d/%d/%d
+
+文章总数：%d
+
+总阅读量：%d
+
+---
+
+### 增长明细
+
+%s`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, ""))
+	fmt.Println(statInfo)
+
+	if len(dingTalkToken) > 0 || len(msg) > 0 {
+		sendToDingTalk(statInfo, dingTalkToken)
+	}
 
 	data, err := json.Marshal(postMap)
 	if err != nil {
@@ -315,26 +333,15 @@ func parsePageData(pageData string) int {
 	return pageResponse.TotalCount
 }
 
-func sendToDingTalk(msg []string, dingTalkToken string) {
-	sort.Sort(growthFactorDecrement(msg))
-	payload := strings.NewReader(fmt.Sprintf(`{
+func sendToDingTalk(mdContent string, dingTalkToken string) {
+	payload := strings.NewReader(`{
     "markdown": {
         "title": "公众号阅读量统计",
-        "text": "## 公众号阅读量统计
-📖/👍/👀增加：%d/%d/%d\n\n文章总数：%d\n\n总阅读量：%d
-
----
-
-### 增长明细
-%s"
+        "text": "` + mdContent + `"
     },
     "msgtype": "markdown"
-}`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, "")))
-	fmt.Println(payload)
+}`)
 
-	if len(dingTalkToken) == 0 || len(msg) == 0 {
-		return
-	}
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", "https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, payload)
 
