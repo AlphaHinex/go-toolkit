@@ -304,7 +304,7 @@ func parsePageData(pageData string) int {
 			postMap[appmsgInfo.Appmsgid] = postStat{
 				Time:       publishInfo.SentInfo.Time,
 				Title:      appmsgInfo.Title,
-				ContentUrl: strings.ReplaceAll(appmsgInfo.ContentUrl, "&amp;", "&"),
+				ContentUrl: strings.Split(strings.ReplaceAll(appmsgInfo.ContentUrl, "&amp;", "&"), "&chksm=")[0],
 				Read:       appmsgInfo.ReadNum,
 				Look:       appmsgInfo.LikeNum,
 				Like:       appmsgInfo.OldLikeNum,
@@ -321,9 +321,7 @@ func sendToDingTalk(msg []string, dingTalkToken string) {
     "markdown": {
         "title": "公众号阅读量统计",
         "text": "## 公众号阅读量统计
-📖/👍/👀增加：%d/%d/%d
-文章总数：%d
-总阅读量：%d
+📖/👍/👀增加：%d/%d/%d\n\n文章总数：%d\n\n总阅读量：%d
 
 ---
 
