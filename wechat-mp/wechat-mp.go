@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -315,10 +316,19 @@ func parsePageData(pageData string) int {
 }
 
 func sendToDingTalk(msg []string, dingTalkToken string) {
+	sort.Sort(growthFactorDecrement(msg))
 	payload := strings.NewReader(fmt.Sprintf(`{
     "markdown": {
         "title": "公众号阅读量统计",
-        "text": "## 公众号阅读量统计\n\n📖/👍/👀增加：%d/%d/%d\n\n文章总数：%d\n\n总阅读量：%d\n\n---\n\n### 增长明细\n\n%s"
+        "text": "## 公众号阅读量统计
+📖/👍/👀增加：%d/%d/%d
+文章总数：%d
+总阅读量：%d
+
+---
+
+### 增长明细
+%s"
     },
     "msgtype": "markdown"
 }`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, "")))
@@ -348,4 +358,38 @@ func sendToDingTalk(msg []string, dingTalkToken string) {
 		fmt.Println(err)
 		return
 	}
+}
+
+type growthFactorDecrement []string
+
+func (s growthFactorDecrement) Len() int {
+	return len(s)
+}
+
+func (s growthFactorDecrement) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s growthFactorDecrement) Less(i, j int) bool {
+	iArray := getGrowthFactories(s[i])
+	jArray := getGrowthFactories(s[j])
+	if iArray[0] == jArray[0] {
+		if iArray[1] == jArray[1] {
+			return iArray[2] > jArray[2]
+		} else {
+			return iArray[1] > jArray[1]
+		}
+	} else {
+		return iArray[0] > jArray[0]
+	}
+}
+
+func getGrowthFactories(str string) [3]int {
+	// format of str: "1. [%s](%s) ↑ %d/%d/%d => %d/%d/%d\r\n"
+	strs := strings.Split(strings.Split(strings.Split(str, " ↑ ")[1], " => ")[0], "/")
+	var ints [3]int
+	for i := 0; i < len(strs); i++ {
+		ints[i], _ = strconv.Atoi(strs[i])
+	}
+	return ints
 }
