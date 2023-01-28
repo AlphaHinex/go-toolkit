@@ -135,7 +135,7 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 				totalReadInc += readInc
 				totalLookInc += lookInc
 				totalLikeInc += likeInc
-				msg = append(msg, fmt.Sprintf("1. [%s](%s) ↑ %d/%d/%d => 📖%d/👍%d/👀%d\r\n", val.Title, val.ContentUrl,
+				msg = append(msg, fmt.Sprintf("1. [%s](%s) ↑ %d/%d/%d => %d/%d/%d\r\n", val.Title, val.ContentUrl,
 					readInc, likeInc, lookInc,
 					val.Read, val.Like, val.Look))
 			}
@@ -318,7 +318,7 @@ func sendToDingTalk(msg []string, dingTalkToken string) {
 	payload := strings.NewReader(fmt.Sprintf(`{
     "markdown": {
         "title": "公众号阅读量统计",
-        "text": "## 公众号阅读量统计\r\n阅读/点赞/在看增加：%d/%d/%d\r\n文章总数：%d\r\n总阅读量：%d\r\n---%s"
+        "text": "## 公众号阅读量统计\n\n📖/👍/👀增加：%d/%d/%d\n\n文章总数：%d\n\n总阅读量：%d\n\n---\n\n### 增长明细\n\n%s"
     },
     "msgtype": "markdown"
 }`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, "")))
