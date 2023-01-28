@@ -21,13 +21,22 @@ func main() {
 		Usage: "Get statistic info of wechat mp",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:  "cookie",
+				Usage: "Cookie value of wechat mp site",
+			},
+			&cli.StringFlag{
 				Name:  "cookie-file",
 				Usage: "Cookie value of wechat mp site saved in file",
 			},
 			&cli.StringFlag{
 				Name:  "o",
 				Value: ".",
-				Usage: "Output path of statistic data",
+				Usage: "Output path of statistic data, use wechat-mp id as filename",
+			},
+			&cli.BoolFlag{
+				Name: "saved",
+				Usage: "Save cookie value to file if turn on this flag, use output path as cookie file path, " +
+					"use wechat-mp id as filename, .cookie as suffix",
 			},
 			&cli.StringFlag{
 				Name:  "dingtalk-token",
@@ -35,15 +44,32 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			cookie := cCtx.String("cookie")
 			cookieFilePath := cCtx.String("cookie-file")
+			saved := cCtx.Bool("saved")
 			outputPath := cCtx.String("o")
 			dingTalkToken := cCtx.String("dingtalk-token")
 
-			content, err := os.ReadFile(cookieFilePath)
-			if err != nil {
-				return err
+			if len(cookie) == 0 {
+				content, err := os.ReadFile(cookieFilePath)
+				if err != nil {
+					return err
+				}
+				cookie = strings.Split(string(content), "\n")[0]
 			}
-			cookie := strings.Split(string(content), "\n")[0]
+			if saved {
+				file, err := os.OpenFile(filepath.Join(outputPath, getSlaveUserFromCookie(cookie)+".cookie"),
+					os.O_WRONLY|os.O_CREATE, 0666)
+				if err != nil {
+					return err
+				}
+				defer file.Close()
+
+				_, err = file.WriteString(cookie)
+				if err != nil {
+					return err
+				}
+			}
 
 			token, err := getToken(cookie)
 			if err != nil {
