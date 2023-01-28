@@ -132,7 +132,7 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 	} else {
 		err := json.Unmarshal(content, &lastStat)
 		if err != nil {
-			fmt.Println(err)
+			log.Println("Unmarshal lastStat error", err)
 		}
 	}
 
@@ -192,7 +192,7 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	defer file.Close()
 	_, err = file.Write(data)
 	if err != nil {
@@ -333,7 +333,7 @@ func parsePageData(pageData string) int {
 	var pageResponse pageResponse
 	err := json.Unmarshal([]byte(listStr), &pageResponse)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Unmarshal pageResponse error", err)
 		return -1
 	}
 
@@ -341,7 +341,7 @@ func parsePageData(pageData string) int {
 	for _, pageInfo := range pageResponse.PublishList {
 		err := json.Unmarshal([]byte(strings.ReplaceAll(pageInfo.PublishInfo, "&quot;", "\"")), &publishInfo)
 		if err != nil {
-			fmt.Println(err)
+			log.Println("Unmarshal publishInfo error", err)
 			return -1
 		}
 		for _, appmsgInfo := range publishInfo.AppmsgInfo {
