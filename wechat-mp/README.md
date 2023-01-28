@@ -22,29 +22,10 @@ $ GOOS=darwin GOARCH=amd64 go build -o wechat-mp_darwin_amd64
 
 > 更多可用的 `GOOS` 和 `GOARCH` 组合可参照 https://golang.google.cn/doc/install/source#environment 。
 
-帮助
-----
-
-```bash
-$ ./wechat-mp -h
-NAME:
-   wechat-mp - Get statistic info of wechat mp
-
-USAGE:
-   wechat-mp [global options] command [command options] [arguments...]
-
-COMMANDS:
-   help, h  Shows a list of commands or help for one command
-
-GLOBAL OPTIONS:
-   --cookie-file value     Cookie value of wechat mp site saved in file
-   -o value                Output path of statistic data (default: ".")
-   --dingtalk-token value  DingTalk token to send msg to robot
-   --help, -h              show help (default: false)
-```
-
 示例
 ----
+
+### 示例1
 
 使用 `/path/to/foobar.cookie` 文件中的 cookie，
 统计对应公众号中的文章数据，
