@@ -16,23 +16,65 @@ var snapshot, release string
 
 func main() {
 	app := &cli.App{
-		Name:  "upload-jars",
-		Usage: "Upload jars to maven repository",
+		Name: "批量上传 Jar 包及同名 pom 文件（如果存在）至 Maven 仓库工具。",
+		UsageText: `upload-jars [-i 查找 Jar 包的根路径] [-c 配置文件] [-s snapshot 仓库 url] [-r release 仓库 url]
+
+默认从命令执行路径查找要上传的 Jar 包。
+查找 Jar 包的根路径中需包含按 GAV（group、artifact、version）创建的三级路径，
+Jar 包及 pom 文件（如果存在）放在 version 路径内，如：
+
+├── com.alibaba
+│   └── druid
+│       └── 2.5.8
+│           └── test.jar
+├── org.codehaus.groovy
+│   ├── groovy-console
+│   │   ├── 2.5.8
+│   │   │   ├── test-snapshot.jar
+│   │   │   ├── test-snapshot.pom
+│   │   │   ├── test.jar
+│   │   │   └── test.pom
+│   │   └── 2.5.9
+│   │       └── test.jar
+│   └── groovy-shell
+│       ├── 2.5.8
+│       │   ├── test-snapshot.jar
+│       │   ├── test-snapshot.pom
+│       │   ├── test.jar
+│       │   └── test.pom
+│       └── 2.5.9
+│           └── test.jar
+
+Maven 仓库地址需通过命令行参数或配置文件指定，命令行参数会覆盖配置文件中对应地址。
+仓库地址需指定两个，一个 snapshot 仓库，一个 release 仓库。
+工具根据 Jar 包文件名中是否包含 snapshot（不区分大小写）关键字进行区分，
+包含上传至 snapshot 仓库，不包含上传至 release 仓库。
+Maven 仓库上传需要身份认证时，需将认证信息包含进仓库地址中，格式如下：
+http://username:pwd@host:port/path/to/repository
+其中用户名、密码如包含特殊字符，需进行 URL 转义。
+
+源码可见：https://github.com/AlphaHinex/go-toolkit/tree/main/upload-jars`,
+		Version: snapshot,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
 				Value: ".",
-				Usage: "Input path of jars",
+				Usage: "查找 Jar 包的根路径，默认为当前路径",
 			},
 			&cli.StringFlag{
-				Name:     "s",
-				Required: true,
-				Usage:    "Maven snapshot repository URL to upload",
+				Name:  "s",
+				Usage: "snapshot 仓库 url",
 			},
 			&cli.StringFlag{
-				Name:     "r",
-				Required: true,
-				Usage:    "Maven release repository URL to upload",
+				Name:  "r",
+				Usage: "release 仓库 url",
+			},
+			&cli.StringFlag{
+				Name: "c",
+				Usage: `Properties 配置文件，格式如下：
+snapshot=http://username:pwd@host:port/path/to/snapshot-repository
+release=http://username:pwd@host:port/path/to/release-repository
+`,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
