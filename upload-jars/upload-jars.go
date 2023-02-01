@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -79,8 +80,27 @@ release=http://username:pwd@host:port/path/to/release-repository
 		},
 		Action: func(cCtx *cli.Context) error {
 			inputPath := cCtx.String("i")
+
 			snapshot = cCtx.String("s")
 			release = cCtx.String("r")
+			if len(snapshot) == 0 || len(release) == 0 {
+				configPath := cCtx.String("c")
+				content, err := os.ReadFile(configPath)
+				if err != nil {
+					return err
+				}
+				for _, property := range strings.Split(string(content), "\n") {
+					if strings.HasPrefix(property, "snapshot=") {
+						snapshot = strings.TrimPrefix(property, "snapshot=")
+					} else if strings.HasPrefix(property, "release=") {
+						release = strings.TrimPrefix(property, "release=")
+					}
+				}
+				if len(snapshot) == 0 || len(release) == 0 {
+					return errors.New("必须指定上传仓库地址")
+				}
+			}
+
 			err := uploadJarsInGavFolders(inputPath)
 			if err != nil {
 				return err
