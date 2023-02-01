@@ -55,7 +55,6 @@ http://username:pwd@host:port/path/to/repository
 其中用户名、密码如包含特殊字符，需进行 URL 转义。
 
 源码可见：https://github.com/AlphaHinex/go-toolkit/tree/main/upload-jars`,
-		Version: snapshot,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
@@ -83,8 +82,8 @@ release=http://username:pwd@host:port/path/to/release-repository
 
 			snapshot = cCtx.String("s")
 			release = cCtx.String("r")
-			if len(snapshot) == 0 || len(release) == 0 {
-				configPath := cCtx.String("c")
+			configPath := cCtx.String("c")
+			if (len(snapshot) == 0 || len(release) == 0) && len(configPath) > 0 {
 				content, err := os.ReadFile(configPath)
 				if err != nil {
 					return err
@@ -99,6 +98,8 @@ release=http://username:pwd@host:port/path/to/release-repository
 				if len(snapshot) == 0 || len(release) == 0 {
 					return errors.New("必须指定上传仓库地址")
 				}
+			} else {
+				return errors.New("必须指定上传仓库地址")
 			}
 
 			err := uploadJarsInGavFolders(inputPath)
