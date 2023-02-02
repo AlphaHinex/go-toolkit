@@ -38,6 +38,10 @@ func main() {
 				Usage: "Save cookie value to file if turn on this flag, use output path as cookie file path, " +
 					"use wechat-mp id as filename, .cookie as suffix",
 			},
+			&cli.BoolFlag{
+				Name:  "saved-only",
+				Usage: "Same as saved flag, only save cookie value to file, do nothing",
+			},
 			&cli.StringFlag{
 				Name:  "dingtalk-token",
 				Usage: "DingTalk token to send msg to robot",
@@ -47,6 +51,7 @@ func main() {
 			cookie := cCtx.String("cookie")
 			cookieFilePath := cCtx.String("cookie-file")
 			saved := cCtx.Bool("saved")
+			savedOnly := cCtx.Bool("saved-only")
 			outputPath := cCtx.String("o")
 			dingTalkToken := cCtx.String("dingtalk-token")
 
@@ -57,7 +62,7 @@ func main() {
 				}
 				cookie = strings.Split(string(content), "\n")[0]
 			}
-			if saved {
+			if saved || savedOnly {
 				file, err := os.OpenFile(filepath.Join(outputPath, getSlaveUserFromCookie(cookie)+".cookie"),
 					os.O_WRONLY|os.O_CREATE, 0666)
 				if err != nil {
@@ -69,6 +74,9 @@ func main() {
 				if err != nil {
 					return err
 				}
+			}
+			if savedOnly {
+				return nil
 			}
 
 			token, err := getToken(cookie)
