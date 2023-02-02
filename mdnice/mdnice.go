@@ -19,6 +19,8 @@ import (
 	"strings"
 )
 
+var quiet = false
+
 func main() {
 	app := &cli.App{
 		Name:  "mdnice",
@@ -41,10 +43,16 @@ func main() {
 				Name:  "img-path-prefix",
 				Usage: "Path to add before image link (local file path) in markdown file",
 			},
+			&cli.BoolFlag{
+				Name:  "q",
+				Value: false,
+				Usage: "Be quiet, not print anything",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			src := cCtx.String("i")
 			token := cCtx.String("token")
+			quiet = cCtx.Bool("q")
 			imgPathPrefix := cCtx.String("img-path-prefix")
 			if token == "" {
 				tokenFilePath := cCtx.String("token-file")
@@ -80,7 +88,7 @@ func main() {
 				}
 			} else {
 				md, errLog := handleOneFile(src, token, imgPathPrefix)
-				if len(md) > 0 || len(errLog) > 0 {
+				if (len(md) > 0 || len(errLog) > 0) && !quiet {
 					fmt.Println(md + "\r\n---\r\n" + errLog)
 				}
 			}
@@ -88,7 +96,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(os.Args); err != nil && !quiet {
 		log.Fatal(err)
 	}
 }
@@ -157,10 +165,14 @@ func handleOneFile(filepath, token, imgPathPrefix string) (string, string) {
 	} else {
 		link, err := upload(filepath, token)
 		if err != nil {
-			fmt.Printf("Failed to upload %s\r\n", filepath)
+			if !quiet {
+				fmt.Printf("Failed to upload %s\r\n", filepath)
+			}
 			return "", "1. Upload " + filepath + " failed: " + err.Error() + "\r\n"
 		} else {
-			fmt.Printf("Upload %s done\r\n", filepath)
+			if !quiet {
+				fmt.Printf("Upload %s done\r\n", filepath)
+			}
 			return "![](" + link + ")\r\n", ""
 		}
 	}
@@ -185,10 +197,14 @@ func uploadImgInMarkdown(mdFilePath, token, imgPathPrefix string) {
 					} else {
 						absPath, err := filepath.Abs(imgPath)
 						if err != nil {
-							log.Printf("[WARN] Could not get abs path of %s.\r\n", imgPath)
+							if !quiet {
+								log.Printf("[WARN] Could not get abs path of %s.\r\n", imgPath)
+							}
 							absPath = imgPath
 						}
-						log.Printf("[DEBUG] Upload %s to mdnice...", imgPathPrefix+absPath)
+						if !quiet {
+							log.Printf("[DEBUG] Upload %s to mdnice...", imgPathPrefix+absPath)
+						}
 						link, err := upload(imgPathPrefix+absPath, token)
 						if err != nil {
 							newMarkdown += line
@@ -211,13 +227,19 @@ func uploadImgInMarkdown(mdFilePath, token, imgPathPrefix string) {
 
 	if updated {
 		_ = os.WriteFile(mdFilePath+"_mdnice.md", []byte(newMarkdown), 0666)
-		fmt.Printf("Write updated content to %s", mdFilePath+"_mdnice.md")
-	} else {
+		if !quiet {
+			fmt.Printf("Write updated content to %s", mdFilePath+"_mdnice.md")
+		}
+	} else if !quiet {
 		fmt.Printf("Nothing changed in %s", mdFilePath)
 	}
 	if len(errLogs) > 0 {
 		_ = os.WriteFile(mdFilePath+"_err.md", []byte(errLogs), 0666)
-		fmt.Printf(" with errors in %s", mdFilePath+"_err.md")
+		if !quiet {
+			fmt.Printf(" with errors in %s", mdFilePath+"_err.md")
+		}
 	}
-	fmt.Println()
+	if !quiet {
+		fmt.Println()
+	}
 }

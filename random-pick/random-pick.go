@@ -15,6 +15,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var quiet = false
+
 func main() {
 	app := &cli.App{
 		Name:  "random-pick",
@@ -46,12 +48,18 @@ func main() {
 				Value: false,
 				Usage: "Keep picked files in path",
 			},
+			&cli.BoolFlag{
+				Name:  "q",
+				Value: false,
+				Usage: "Be quiet, not print anything",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			input := cCtx.String("i")
 			filter := cCtx.String("t")
+			quiet = cCtx.Bool("q")
 			files, err := loadFiles(input, filter)
-			if err != nil {
+			if err != nil && !quiet {
 				log.Fatal(err)
 			}
 
@@ -59,7 +67,7 @@ func main() {
 			_, err = os.Stat(output)
 			if os.IsNotExist(err) {
 				err = os.MkdirAll(output, 0777)
-				if err != nil {
+				if err != nil && !quiet {
 					log.Fatal(err)
 				}
 			}
@@ -84,25 +92,27 @@ func main() {
 					// Do nothing
 				} else if !keep {
 					err = os.Rename(from, to)
-					if err != nil {
+					if err != nil && !quiet {
 						log.Fatal(err)
 					}
 					op = "Move"
 				} else {
 					_, err = copyFile(from, to)
-					if err != nil {
+					if err != nil && !quiet {
 						log.Fatal(err)
 					}
 					op = "Copy"
 				}
-				fmt.Printf("%s %s to %s\n", op, from, to)
+				if !quiet {
+					fmt.Printf("%s %s to %s\n", op, from, to)
+				}
 				i++
 			}
 			return nil
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(os.Args); err != nil && !quiet {
 		log.Fatal(err)
 	}
 }
