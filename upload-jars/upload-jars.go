@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/antchfx/xmlquery"
 	"log"
 	"os"
 	"os/exec"
@@ -106,6 +107,10 @@ release=http://username:pwd@host:port/path/to/release-repository
 			if err != nil {
 				return err
 			}
+			err = uploadJarsInInputPath(inputPath)
+			if err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -193,4 +198,56 @@ func execute(command string) {
 	if err != nil {
 		log.Fatalf("cmd.Run() failed with %s\ncomomand: %s\n", err, command)
 	}
+}
+
+func uploadJarsInInputPath(inputPath string) error {
+	entries, err := os.ReadDir(inputPath)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".pom") {
+			continue
+		}
+		javaFilePath, _ := filepath.Abs(filepath.Join(inputPath, strings.ReplaceAll(entry.Name(), ".pom", ".jar")))
+		_, err = os.Stat(javaFilePath)
+		if os.IsNotExist(err) {
+			continue
+		}
+
+		pomFilePath, err := filepath.Abs(filepath.Join(inputPath, entry.Name()))
+		if err != nil {
+			return err
+		}
+		f, err := os.Open(pomFilePath)
+		if err != nil {
+			return err
+		}
+		doc, err := xmlquery.Parse(f)
+		if err != nil {
+			return err
+		}
+		groupId := getGav(doc, "groupId")
+		artifactId := getGav(doc, "artifactId")
+		version := getGav(doc, "version")
+
+		url := release
+		if strings.Contains(strings.ToLower(entry.Name()), "snapshot") {
+			url = snapshot
+		}
+
+		execute(fmt.Sprintf("mvn deploy:deploy-file "+
+			"-DgroupId=%s -DartifactId=%s -Dversion=%s "+
+			"-Dpackaging=jar -DpomFile=%s -Dfile=%s -Durl=%s\r\n",
+			groupId, artifactId, version, pomFilePath, javaFilePath, url))
+	}
+	return nil
+}
+
+func getGav(doc *xmlquery.Node, tag string) string {
+	gav, err := xmlquery.Query(doc, fmt.Sprintf("//project/%s", tag))
+	if err != nil || gav == nil {
+		gav = xmlquery.FindOne(doc, fmt.Sprintf("//project/parent/%s", tag))
+	}
+	return gav.InnerText()
 }
