@@ -96,10 +96,8 @@ release=http://username:pwd@host:port/path/to/release-repository
 						release = strings.TrimPrefix(property, "release=")
 					}
 				}
-				if len(snapshot) == 0 || len(release) == 0 {
-					return errors.New("必须指定上传仓库地址")
-				}
-			} else {
+			}
+			if len(snapshot) == 0 || len(release) == 0 {
 				return errors.New("必须指定上传仓库地址")
 			}
 
