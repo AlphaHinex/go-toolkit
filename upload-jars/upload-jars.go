@@ -27,26 +27,26 @@ func main() {
 2. 按 GAV（group、artifact、version）创建三级路径，将 Jar 包及 pom 文件（如果存在）放在 version 路径内，如：
 
 ├── com.alibaba
-│   └── druid
-│       └── 2.5.8
-│           └── test.jar
+│   └── druid
+│       └── 2.5.8
+│           └── test.jar
 ├── org.codehaus.groovy
-│   ├── groovy-console
-│   │   ├── 2.5.8
-│   │   │   ├── test-snapshot.jar
-│   │   │   ├── test-snapshot.pom
-│   │   │   ├── test.jar
-│   │   │   └── test.pom
-│   │   └── 2.5.9
-│   │       └── test.jar
-│   └── groovy-shell
-│       ├── 2.5.8
-│       │   ├── test-snapshot.jar
-│       │   ├── test-snapshot.pom
-│       │   ├── test.jar
-│       │   └── test.pom
-│       └── 2.5.9
-│           └── test.jar
+│   ├── groovy-console
+│   │   ├── 2.5.8
+│   │   │   ├── test-snapshot.jar
+│   │   │   ├── test-snapshot.pom
+│   │   │   ├── test.jar
+│   │   │   └── test.pom
+│   │   └── 2.5.9
+│   │       └── test.jar
+│   └── groovy-shell
+│       ├── 2.5.8
+│       │   ├── test-snapshot.jar
+│       │   ├── test-snapshot.pom
+│       │   ├── test.jar
+│       │   └── test.pom
+│       └── 2.5.9
+│           └── test.jar
 
 Maven 仓库地址需通过命令行参数或配置文件指定，命令行参数会覆盖配置文件中对应地址。
 仓库地址需指定两个，一个 snapshot 仓库，一个 release 仓库。
