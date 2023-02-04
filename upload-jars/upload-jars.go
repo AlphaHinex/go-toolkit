@@ -91,9 +91,9 @@ release=http://username:pwd@host:port/path/to/release-repository
 					return err
 				}
 				for _, property := range strings.Split(string(content), "\n") {
-					if strings.HasPrefix(property, "snapshot=") {
+					if len(snapshot) == 0 && strings.HasPrefix(property, "snapshot=") {
 						snapshot = strings.TrimPrefix(property, "snapshot=")
-					} else if strings.HasPrefix(property, "release=") {
+					} else if len(release) == 0 && strings.HasPrefix(property, "release=") {
 						release = strings.TrimPrefix(property, "release=")
 					}
 				}
