@@ -20,11 +20,14 @@ jobs:
       - name: Build
         run: |
           go build -o gitlab_linux_amd64 gitlab/gitlab.go
-          GOOS=windows GOARCH=amd64 go build -o gitlab_win_amd64 gitlab/gitlab.go
+          chmod +x gitlab_linux_amd64
+          GOOS=windows GOARCH=amd64 go build -o gitlab_win_amd64.exe gitlab/gitlab.go
+          GOOS=darwin GOARCH=amd64 go build -o gitlab_darwin_amd64 gitlab/gitlab.go
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             gitlab_linux_amd64
-            gitlab_win_amd64
+            gitlab_win_amd64.exe
+            gitlab_darwin_amd64
