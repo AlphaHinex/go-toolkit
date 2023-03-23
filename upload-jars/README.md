@@ -39,6 +39,6 @@ $ mvn deploy:deploy-file \
 -DpomFile=./activiti-spring-5.15.pom -Dfile=./activiti-spring-5.15.jar
 ```
 
-> 因 `c3p0-0.9.1.2.jar` 无同名 pom 文件，无法确定其 GAV 信息，无法被上传。
+> 因上例中的 `c3p0-0.9.1.2.jar` 无同名 pom 文件，无法确定其 GAV 信息，无法被上传。
 
 更多内容可见帮助信息：`./upload-jars -h`
