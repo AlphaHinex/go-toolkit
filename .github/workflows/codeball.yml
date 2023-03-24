@@ -1,4 +1,5 @@
 name: Codeball
+
 on:
   pull_request: {}
   pull_request_review_comment:
@@ -13,9 +14,10 @@ jobs:
       # For customizations and more documentation, see https://github.com/sturdy-dev/codeball-action
       # For all configuration options see https://github.com/sturdy-dev/codeball-action/blob/v2/action.yml
       - name: Codeball
-        uses: sturdy-dev/codeball-action@v2.6.0
+        uses: sturdy-dev/codeball-action@v2
         with:
           approvePullRequests: "true"
           labelPullRequestsWhenApproved: "true"
           labelPullRequestsWhenReviewNeeded: "true"
           failJobsWhenReviewNeeded: "true"
+          codeSuggestionsFromComments: "true"
