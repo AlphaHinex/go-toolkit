@@ -146,7 +146,7 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 
 	getPageData(cookie, token, 0)
 
-	var msg []string
+	var msg, ranking []string
 	for key, val := range postMap {
 		count++
 		totalRead += val.Read
