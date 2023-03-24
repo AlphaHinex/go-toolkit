@@ -17,7 +17,7 @@ jobs:
         uses: sturdy-dev/codeball-action@v2
         with:
           approvePullRequests: "true"
-          labelPullRequestsWhenApproved: "true"
-          labelPullRequestsWhenReviewNeeded: "true"
+          labelPullRequestsWhenApproved: "false"
+          labelPullRequestsWhenReviewNeeded: "false"
           failJobsWhenReviewNeeded: "true"
           codeSuggestionsFromComments: "true"
