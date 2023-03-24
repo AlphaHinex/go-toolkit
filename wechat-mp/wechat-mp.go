@@ -432,3 +432,25 @@ func getGrowthFactories(str string) [3]int {
 	}
 	return ints
 }
+
+type totalRanking []string
+
+func (s totalRanking) Len() int {
+	return len(s)
+}
+
+func (s totalRanking) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s totalRanking) Less(i, j int) bool {
+	iCount, _ := getReadCount(s[i])
+	jCount, _ := getReadCount(s[j])
+	return iCount > jCount
+}
+
+func getReadCount(str string) (int, error) {
+	// format of str: "1. [%s](%s) ↑ %d/%d/%d => %d/%d/%d\r\n"
+	count := strings.Split(strings.Split(str, " => ")[1], "/")[0]
+	return strconv.Atoi(count)
+}
