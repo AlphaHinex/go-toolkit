@@ -175,6 +175,7 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 					val.Read, val.Like, val.Look))
 			}
 		}
+		ranking = append(ranking, fmt.Sprintf("1. [%s](%s) %d", val.Title, val.ContentUrl, val.Read))
 	}
 
 	sort.Sort(growthFactorDecrement(msg))

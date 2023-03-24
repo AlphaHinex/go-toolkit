@@ -12,7 +12,7 @@ jobs:
       # Run Codeball on all new Pull Requests and Review Comments! 🚀
       # For customizations and more documentation, see https://github.com/sturdy-dev/codeball-action
       - name: Codeball
-        uses: sturdy-dev/codeball-action@v2
+        uses: sturdy-dev/codeball-action@v2.6.0
         with:
           approvePullRequests: "true"
           labelPullRequestsWhenApproved: "true"
