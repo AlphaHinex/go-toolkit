@@ -18,6 +18,6 @@ jobs:
         with:
           approvePullRequests: "true"
           labelPullRequestsWhenApproved: "false"
-          labelPullRequestsWhenReviewNeeded: "false"
+          labelPullRequestsWhenReviewNeeded: "true"
           failJobsWhenReviewNeeded: "true"
           codeSuggestionsFromComments: "true"
