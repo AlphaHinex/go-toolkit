@@ -40,15 +40,15 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:    "project-ids",
-				Aliases: []string{"p"},
-				Usage:   "Project IDs in GitLab, could multi, as 5,7-10,13-25",
+				Name:     "project-ids",
+				Aliases:  []string{"p"},
+				Usage:    "Project IDs in GitLab, could multi, as 5,7-10,13-25",
+				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "branch",
-				Aliases:  []string{"b"},
-				Usage:    "Branch of project",
-				Required: true,
+				Name:    "branch",
+				Aliases: []string{"b"},
+				Usage:   "Branch of project, will analyse all branches if not set",
 			},
 			&cli.StringFlag{
 				Name:  "since",
@@ -91,10 +91,7 @@ func main() {
 
 			projectIds := parseProjectIds(cCtx.String("project-ids"))
 			for _, projectId := range projectIds {
-				err := analyseProject(projectId, branch, since, until, parents, parallel, lark)
-				if err != nil {
-					log.Fatal(err)
-				}
+				analyseProject(projectId, branch, since, until, parents, parallel, lark)
 			}
 			return nil
 		},
@@ -135,11 +132,27 @@ func parseProjectIds(input string) []int {
 	return pIds
 }
 
-func analyseProject(projectId int, branch, since, until string, parents, parallel int, lark string) error {
+func analyseProject(projectId int, branch, since, until string, parents, parallel int, lark string) {
+	if len(branch) > 0 {
+		analyseProjectBranch(projectId, branch, since, until, parents, parallel, lark)
+		return
+	}
+	branches, err := getAllBranches(projectId)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, branch := range branches {
+		if !branch.Merged {
+			analyseProjectBranch(projectId, branch.Name, since, until, parents, parallel, lark)
+		}
+	}
+}
+
+func analyseProjectBranch(projectId int, branch, since, until string, parents, parallel int, lark string) {
 	from := time.Now()
 	proj, err := getProjectInfo(projectId)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	log.Printf("Start to analyse %s ...\r\n", proj.Name)
 
@@ -150,13 +163,13 @@ func analyseProject(projectId int, branch, since, until string, parents, paralle
 	_ = os.Remove(filename)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	defer file.Close()
 
 	_, err = file.WriteString("project,branch,sha,date,author,email,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
 	rowChannel := make(chan string, 1000)
@@ -166,7 +179,7 @@ func analyseProject(projectId int, branch, since, until string, parents, paralle
 	for row := range rowChannel {
 		_, err = file.WriteString(row)
 		if err != nil {
-			return err
+			log.Fatal(err)
 		}
 	}
 	log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
@@ -226,7 +239,43 @@ func analyseProject(projectId int, branch, since, until string, parents, paralle
 	}
 
 	fmt.Printf("\r\n%s\r\n\r\n%s\r\n%s\r\n", title, content, desc)
-	return nil
+}
+
+type branches []branch
+
+type branch struct {
+	Name    string
+	Merged  bool
+	Default bool
+}
+
+func getAllBranches(projectId int) (branches, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", host, projectId)
+	method := "GET"
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("PRIVATE-TOKEN", token)
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	var response branches
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
 }
 
 func sendLarkMsg(url, projectUrl, title, content, desc string) {
