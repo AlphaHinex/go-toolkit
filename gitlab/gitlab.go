@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,9 +40,9 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:    "project-id",
+				Name:    "project-ids",
 				Aliases: []string{"p"},
-				Usage:   "Project ID in GitLab",
+				Usage:   "Project IDs in GitLab, could multi, as 5,7-10,13-25",
 			},
 			&cli.StringFlag{
 				Name:     "branch",
@@ -79,92 +80,139 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			from := time.Now()
 			host = cCtx.String("url")
 			token = cCtx.String("access-token")
-			projectId := cCtx.String("project-id")
 			branch := cCtx.String("branch")
 			since := cCtx.String("since")
 			until := cCtx.String("until")
 			parents := cCtx.Int("commit-parents")
-
-			proj, err := getProjectInfo(projectId)
-			if err != nil {
-				return err
-			}
-			log.Printf("Start to analyse %s ...\r\n", proj.Name)
-
-			commitChannel := make(chan commit, 1000)
-			go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
-
-			filename := fmt.Sprintf("%s_%s_%s_%s~%s.csv", projectId, proj.Name, branch, since, until)
-			_ = os.Remove(filename)
-			file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			_, err = file.WriteString("project,branch,sha,date,author,email,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
-			if err != nil {
-				return err
-			}
-
 			parallel := cCtx.Int("parallel")
-			rowChannel := make(chan string, 1000)
-			statChannel := make(chan map[string]*stat, parallel)
-			go consumeCommit(projectId, proj.Name, branch, parallel, commitChannel, rowChannel, statChannel)
+			lark := cCtx.String("lark")
 
-			for row := range rowChannel {
-				_, err = file.WriteString(row)
+			projectIds := parseProjectIds(cCtx.String("project-ids"))
+			for projectId := range projectIds {
+				err := analyseProject(projectId, branch, since, until, parents, parallel, lark)
 				if err != nil {
-					return err
+					log.Fatal(err)
 				}
 			}
-			log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
+			return nil
+		},
+	}
 
-			userStat := make(map[string]*stat)
-			for us := range statChannel {
-				for user, s := range us {
-					if _, exist := userStat[user]; exist {
-						userStat[user].add += s.add
-						userStat[user].del += s.del
-						userStat[user].addIgnoreSpace += s.addIgnoreSpace
-						userStat[user].delIgnoreSpace += s.delIgnoreSpace
-						userStat[user].fileCount += s.fileCount
-						userStat[user].commitCount += s.commitCount
-					} else {
-						userStat[user] = s
-					}
-				}
-			}
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
 
-			results := getResults(userStat)
-			sort.Sort(results)
+/**
+ * Parse input project-ids string to project id int array
+ * project-ids input string could be '23' or '3,5-7,11-16'
+ * and should get [23] or [3,5,6,7,11,12,13,14,15,16] after parse.
+ */
+func parseProjectIds(input string) []int {
+	var pIds []int
+	// validate input format by regex
+	pattern := `^\d+(-\d+)?(,\d+(-\d+)?)*$`
+	regEx := regexp.MustCompile(pattern)
+	if !regEx.MatchString(input) {
+		log.Fatalf("Invalid input format. Input string:%q", input)
+		return pIds
+	}
+	for _, idPart := range strings.Split(input, ",") {
+		if strings.Contains(idPart, "-") {
+			pair := strings.Split(idPart, "-")
+			from, _ := strconv.Atoi(pair[0])
+			to, _ := strconv.Atoi(pair[1])
+			for i := from; i <= to; i++ {
+				pIds = append(pIds, i)
+			}
+		} else {
+			id, _ := strconv.Atoi(idPart)
+			pIds = append(pIds, id)
+		}
+	}
+	return pIds
+}
 
-			title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, branch, since, until)
-			content := fmt.Sprintf("No. %-50s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
-			for i, r := range results {
-				content += fmt.Sprintf("%2d. %-50s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.author+"("+r.email+")",
-					r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
-					r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
-					r.commitCount, r.fileCount)
+func analyseProject(projectId int, branch, since, until string, parents, parallel int, lark string) error {
+	from := time.Now()
+	proj, err := getProjectInfo(projectId)
+	if err != nil {
+		return err
+	}
+	log.Printf("Start to analyse %s ...\r\n", proj.Name)
+
+	commitChannel := make(chan commit, 1000)
+	go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
+
+	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", projectId, proj.Name, branch, since, until)
+	_ = os.Remove(filename)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString("project,branch,sha,date,author,email,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
+	if err != nil {
+		return err
+	}
+
+	rowChannel := make(chan string, 1000)
+	statChannel := make(chan map[string]*stat, parallel)
+	go consumeCommit(projectId, proj.Name, branch, parallel, commitChannel, rowChannel, statChannel)
+
+	for row := range rowChannel {
+		_, err = file.WriteString(row)
+		if err != nil {
+			return err
+		}
+	}
+	log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
+
+	userStat := make(map[string]*stat)
+	for us := range statChannel {
+		for user, s := range us {
+			if _, exist := userStat[user]; exist {
+				userStat[user].add += s.add
+				userStat[user].del += s.del
+				userStat[user].addIgnoreSpace += s.addIgnoreSpace
+				userStat[user].delIgnoreSpace += s.delIgnoreSpace
+				userStat[user].fileCount += s.fileCount
+				userStat[user].commitCount += s.commitCount
+			} else {
+				userStat[user] = s
 			}
-			cp := "统计了所有 Commit"
-			switch parents {
-			case 2:
-				cp = "仅统计 Merge Request Commit"
-				break
-			case 1:
-				cp = "统计了除初始 Commit 和 Merge Request 外的所有 Commit"
-				break
-			case 0:
-				cp = "仅统计了初始 Commit"
-				break
-			default:
-				cp = "统计了 Parent 数量为 " + strconv.Itoa(parents) + " 的 Commit"
-			}
-			desc := `以上结果` + cp + `（时间范围内）
+		}
+	}
+
+	results := getResults(userStat)
+	sort.Sort(results)
+
+	title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, branch, since, until)
+	content := fmt.Sprintf("No. %-50s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
+	for i, r := range results {
+		content += fmt.Sprintf("%2d. %-50s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.author+"("+r.email+")",
+			r.addIgnoreSpace+r.delIgnoreSpace, float32(r.addIgnoreSpace+r.delIgnoreSpace)/float32(r.add+r.del)*100,
+			r.addIgnoreSpace, float32(r.addIgnoreSpace)/float32(r.add)*100,
+			r.commitCount, r.fileCount)
+	}
+	cp := "统计了所有 Commit"
+	switch parents {
+	case 2:
+		cp = "仅统计 Merge Request Commit"
+		break
+	case 1:
+		cp = "统计了除初始 Commit 和 Merge Request 外的所有 Commit"
+		break
+	case 0:
+		cp = "仅统计了初始 Commit"
+		break
+	default:
+		cp = "统计了 Parent 数量为 " + strconv.Itoa(parents) + " 的 Commit"
+	}
+	desc := `以上结果` + cp + `（时间范围内）
 * effLines（有效代码行数）= 有效增加代码行数 + 有效减少代码行数
 * effLines ratio（有效代码率）= 有效代码行数 / 总代码行数 * 100%
 * effAdds（有效增加行数）= 有效增加代码行数
@@ -173,19 +221,12 @@ func main() {
 * files：文件总数（不去重）
 * 有效代码：忽略仅有空格或换行的代码改动，diff -w`
 
-			lark := cCtx.String("lark")
-			if len(lark) > 0 {
-				sendLarkMsg(lark, proj.WebUrl, title, content, desc)
-			}
-
-			fmt.Printf("\r\n%s\r\n\r\n%s\r\n%s\r\n", title, content, desc)
-			return nil
-		},
+	if len(lark) > 0 {
+		sendLarkMsg(lark, proj.WebUrl, title, content, desc)
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
-	}
+	fmt.Printf("\r\n%s\r\n\r\n%s\r\n%s\r\n", title, content, desc)
+	return nil
 }
 
 func sendLarkMsg(url, projectUrl, title, content, desc string) {
@@ -246,8 +287,8 @@ type project struct {
 	WebUrl string `json:"web_url"`
 }
 
-func getProjectInfo(projectId string) (project, error) {
-	url := host + "/api/v4/projects/" + projectId + "?statistics=true"
+func getProjectInfo(projectId int) (project, error) {
+	url := host + "/api/v4/projects/" + strconv.Itoa(projectId) + "?statistics=true"
 	method := "GET"
 
 	client := &http.Client{}
@@ -285,8 +326,8 @@ type commit struct {
 	ParentIds    []string `json:"parent_ids"`
 }
 
-func getCommits(projectId, branch, since, until string, ch chan commit, parents int) {
-	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits?ref_name=%s&since=%s&until=%s&",
+func getCommits(projectId int, branch, since, until string, ch chan commit, parents int) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&since=%s&until=%s&",
 		host, projectId, branch, since, until)
 
 	allData, err := getAllPageData(url)
@@ -313,7 +354,7 @@ func getCommits(projectId, branch, since, until string, ch chan commit, parents 
 	log.Println("Load all commits")
 }
 
-func consumeCommit(projectId, projectName, branch string, parallel int,
+func consumeCommit(projectId int, projectName, branch string, parallel int,
 	commitChannel chan commit, rowChannel chan string, statChannel chan map[string]*stat) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
@@ -349,7 +390,7 @@ func consumeCommit(projectId, projectName, branch string, parallel int,
 					user.del += del
 					user.addIgnoreSpace += actAdd
 					user.delIgnoreSpace += actDel
-					rowChannel <- fmt.Sprintf("%s_%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
+					rowChannel <- fmt.Sprintf("%d_%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
 						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorName, c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
@@ -390,8 +431,8 @@ type diff struct {
 	DeletedFile bool   `json:"deleted_file"`
 }
 
-func getDiff(projectId, commitShortId string) (diffs, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/commits/%s/diff?", host, projectId, commitShortId)
+func getDiff(projectId int, commitShortId string) (diffs, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits/%s/diff?", host, projectId, commitShortId)
 
 	allData, err := getAllPageData(url)
 	if err != nil {
