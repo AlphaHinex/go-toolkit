@@ -90,7 +90,7 @@ func main() {
 			lark := cCtx.String("lark")
 
 			projectIds := parseProjectIds(cCtx.String("project-ids"))
-			for projectId := range projectIds {
+			for _, projectId := range projectIds {
 				err := analyseProject(projectId, branch, since, until, parents, parallel, lark)
 				if err != nil {
 					log.Fatal(err)
