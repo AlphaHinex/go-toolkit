@@ -21,7 +21,3 @@ func TestParseDiff(t *testing.T) {
 		t.Error(fmt.Sprintf("del ignore space lines expect 50, but got %d", i4))
 	}
 }
-
-func TestParseProjectIds(t *testing.T) {
-	fmt.Println(parseProjectIds("3,11-23,45-16,29"))
-}
