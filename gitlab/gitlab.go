@@ -25,8 +25,9 @@ const pageSize = 99
 
 func main() {
 	app := &cli.App{
-		Name:  "gitlab",
-		Usage: "Use GitLab API to do some analysis works",
+		Name:    "gitlab",
+		Usage:   "Use GitLab API to do some analysis works",
+		Version: "v2.1.0-SNAPSHOT",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",

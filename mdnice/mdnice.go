@@ -23,8 +23,9 @@ var quiet = false
 
 func main() {
 	app := &cli.App{
-		Name:  "mdnice",
-		Usage: "Upload pictures to mdnice",
+		Name:    "mdnice",
+		Usage:   "Upload pictures to mdnice",
+		Version: "v2.1.0-SNAPSHOT",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
