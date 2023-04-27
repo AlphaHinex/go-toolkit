@@ -180,13 +180,24 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	statChannel := make(chan map[string]*stat, parallel)
 	go consumeCommit(proj.Id, proj.Name, br, parallel, commitChannel, rowChannel, statChannel)
 
+	hasContent := false
 	for row := range rowChannel {
 		_, err = file.WriteString(row)
 		if err != nil {
 			log.Fatal(err)
 		}
+		hasContent = true
 	}
-	log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
+	if hasContent {
+		log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
+	} else {
+		_ = os.Remove(filename)
+		log.Printf("No data, remove %s, use %s.\r\n", filename, time.Since(from))
+	}
+
+	if !hasContent {
+		return
+	}
 
 	userStat := make(map[string]*stat)
 	for us := range statChannel {
