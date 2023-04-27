@@ -171,7 +171,7 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	}
 	defer file.Close()
 
-	_, err = file.WriteString("project,branch,sha,date,author,email,filename,filetype,operation,add,del,addIgnoreSpace,delIgnoreSpace\r\n")
+	_, err = file.WriteString("project\tbranch\tsha\tdate\tauthor\temail\tfilename\tfiletype\toperation\tadd\tdel\taddIgnoreSpace\tdelIgnoreSpace\r\n")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func consumeCommit(projectId int, projectName, br string, parallel int,
 					user.del += del
 					user.addIgnoreSpace += actAdd
 					user.delIgnoreSpace += actDel
-					rowChannel <- fmt.Sprintf("%d_%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
+					rowChannel <- fmt.Sprintf("%d_%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\r\n",
 						projectId, projectName, br, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorName, c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
