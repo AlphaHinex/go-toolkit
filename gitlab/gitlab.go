@@ -27,7 +27,7 @@ func main() {
 	app := &cli.App{
 		Name:    "gitlab",
 		Usage:   "Use GitLab API to do some analysis works",
-		Version: "v2.1.0-SNAPSHOT",
+		Version: "v2.1.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",

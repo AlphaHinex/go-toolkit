@@ -21,7 +21,7 @@ func main() {
 	app := &cli.App{
 		Name:    "random-pick",
 		Usage:   "Random pick files in some path",
-		Version: "v2.1.0-SNAPSHOT",
+		Version: "v2.1.0",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:  "n",

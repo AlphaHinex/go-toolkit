@@ -16,30 +16,34 @@ NAME:
 USAGE:
    gitlab [global options] command [command options] [arguments...]
 
+VERSION:
+   v2.1.0
+
 COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
    --url value, -u value            GitLab host url
    --access-token value, -t value   Access token to use GitLab API
-   --project-id value, -p value     Project ID in GitLab
-   --branch value, -b value         Branch of project
+   --project-ids value, -p value    Project IDs in GitLab, could multi, as 5,7-10,13-25
+   --branch value, -b value         Branch of project, will analyse all branches if not set
    --since value                    Date of since, from 00:00:00 (default: "2022-01-01")
    --until value                    Date of until, to 23:59:59 (default: "2022-12-31")
    --parallel value                 Number of commit parsers (default: 16)
    --lark value                     Lark webhook url
-   --commit-parents commit-parents  Only count the commit has commit-parents number parent(s),
-                                        -1 means counting all commits,
-                                        0 means only counting the initial commit,
-                                        2 means only counting merge request commit,
+   --commit-parents commit-parents  Only count the commit has commit-parents number parent(s), 
+                                        -1 means counting all commits, 
+                                        0 means only counting the initial commit, 
+                                        2 means only counting merge request commit, 
                                         1 means exclude initial commit and merge request commit (default: -1)
    --help, -h                       show help (default: false)
+   --version, -v                    print the version (default: false)
 ```
 
 统计 https://gitlab.com/gnachman/iterm2 项目 2022 年 11 月代码提交情况：
 
 ```bash
-$ ./gitlab -u https://gitlab.com/ -t XXXXXX -p 252461 -b master --commit-parents 1 --since 2022-11-01 --until 2022-11-30
+$ ./gitlab -u https://gitlab.com/ -p 252461 -b master --commit-parents 1 --since 2022-11-01 --until 2022-11-30
 2022/12/10 22:47:19 Start to analyse iterm2 ...
 2022/12/10 22:47:22 Load all commits
 2022/12/10 22:47:31 Generate 252461_iterm2_master_2022-11-01~2022-11-30.csv use 24.443924546s.
