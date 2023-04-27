@@ -83,7 +83,7 @@ func main() {
 		Action: func(cCtx *cli.Context) error {
 			host = cCtx.String("url")
 			token = cCtx.String("access-token")
-			branch := cCtx.String("branch")
+			br := cCtx.String("branch")
 			since := cCtx.String("since")
 			until := cCtx.String("until")
 			parents := cCtx.Int("commit-parents")
@@ -92,7 +92,7 @@ func main() {
 
 			projectIds := parseProjectIds(cCtx.String("project-ids"))
 			for _, projectId := range projectIds {
-				analyseProject(projectId, branch, since, until, parents, parallel, lark)
+				analyseProject(projectId, br, since, until, parents, parallel, lark)
 			}
 			return nil
 		},
@@ -133,34 +133,34 @@ func parseProjectIds(input string) []int {
 	return pIds
 }
 
-func analyseProject(projectId int, branch, since, until string, parents, parallel int, lark string) {
-	if len(branch) > 0 {
-		analyseProjectBranch(projectId, branch, since, until, parents, parallel, lark)
+func analyseProject(projectId int, br, since, until string, parents, parallel int, lark string) {
+	if len(br) > 0 {
+		analyseProjectBranch(projectId, br, since, until, parents, parallel, lark)
 		return
 	}
-	branches, err := getAllBranches(projectId)
+	brs, err := getAllBranches(projectId)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, branch := range branches {
-		if !branch.Merged {
-			analyseProjectBranch(projectId, branch.Name, since, until, parents, parallel, lark)
+	for _, b := range brs {
+		if !b.Merged {
+			analyseProjectBranch(projectId, b.Name, since, until, parents, parallel, lark)
 		}
 	}
 }
 
-func analyseProjectBranch(projectId int, branch, since, until string, parents, parallel int, lark string) {
+func analyseProjectBranch(projectId int, br, since, until string, parents, parallel int, lark string) {
 	from := time.Now()
 	proj, err := getProjectInfo(projectId)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Start to analyse %s branch of %s project ...\r\n", branch, proj.Name)
+	log.Printf("Start to analyse %s branch of %s project ...\r\n", br, proj.Name)
 
 	commitChannel := make(chan commit, 1000)
-	go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
+	go getCommits(projectId, br, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
 
-	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", projectId, proj.Name, branch, since, until)
+	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", projectId, proj.Name, br, since, until)
 	_ = os.Remove(filename)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -175,7 +175,7 @@ func analyseProjectBranch(projectId int, branch, since, until string, parents, p
 
 	rowChannel := make(chan string, 1000)
 	statChannel := make(chan map[string]*stat, parallel)
-	go consumeCommit(projectId, proj.Name, branch, parallel, commitChannel, rowChannel, statChannel)
+	go consumeCommit(projectId, proj.Name, br, parallel, commitChannel, rowChannel, statChannel)
 
 	for row := range rowChannel {
 		_, err = file.WriteString(row)
@@ -204,7 +204,7 @@ func analyseProjectBranch(projectId int, branch, since, until string, parents, p
 	results := getResults(userStat)
 	sort.Sort(results)
 
-	title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, branch, since, until)
+	title := fmt.Sprintf("%s 项目 %s  分支代码分析结果（%s~%s)", proj.Name, br, since, until)
 	content := fmt.Sprintf("No. %-50s effLines(ratio)\teffAdds(ratio)\tcommits\tfiles\r\n", "author")
 	for i, r := range results {
 		content += fmt.Sprintf("%2d. %-50s %d(%.2f%%)\t%d(%.2f%%)\t%d\t%d\r\n", i+1, r.author+"("+r.email+")",
@@ -376,9 +376,9 @@ type commit struct {
 	ParentIds    []string `json:"parent_ids"`
 }
 
-func getCommits(projectId int, branch, since, until string, ch chan commit, parents int) {
+func getCommits(projectId int, br, since, until string, ch chan commit, parents int) {
 	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&since=%s&until=%s&",
-		host, projectId, url.QueryEscape(branch), since, until)
+		host, projectId, url.QueryEscape(br), since, until)
 
 	allData, err := getAllPageData(urlStr)
 	if err != nil {
@@ -406,7 +406,7 @@ func getCommits(projectId int, branch, since, until string, ch chan commit, pare
 	log.Println("Load all commits")
 }
 
-func consumeCommit(projectId int, projectName, branch string, parallel int,
+func consumeCommit(projectId int, projectName, br string, parallel int,
 	commitChannel chan commit, rowChannel chan string, statChannel chan map[string]*stat) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
@@ -443,7 +443,7 @@ func consumeCommit(projectId int, projectName, branch string, parallel int,
 					user.addIgnoreSpace += actAdd
 					user.delIgnoreSpace += actDel
 					rowChannel <- fmt.Sprintf("%d_%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%d,%d,%d\r\n",
-						projectId, projectName, branch, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorName, c.AuthorEmail,
+						projectId, projectName, br, c.ShortId, toCSTStr(c.AuthoredDate), c.AuthorName, c.AuthorEmail,
 						diff.NewPath, filepath.Ext(diff.NewPath), op, add, del, actAdd, actDel)
 				}
 			}
