@@ -36,10 +36,9 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "access-token",
-				Aliases:  []string{"t"},
-				Usage:    "Access token to use GitLab API",
-				Required: true,
+				Name:    "access-token",
+				Aliases: []string{"t"},
+				Usage:   "Access token to use GitLab API",
 			},
 			&cli.StringFlag{
 				Name:     "project-ids",
