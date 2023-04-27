@@ -162,7 +162,7 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	commitChannel := make(chan commit, 1000)
 	go getCommits(proj.Id, br, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
 
-	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", proj.Id, proj.Name, br, since, until)
+	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", proj.Id, proj.Name, strings.ReplaceAll(br, "/", ""), since, until)
 	_ = os.Remove(filename)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
