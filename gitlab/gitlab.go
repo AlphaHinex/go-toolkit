@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -154,7 +155,7 @@ func analyseProjectBranch(projectId int, branch, since, until string, parents, p
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Start to analyse %s ...\r\n", proj.Name)
+	log.Printf("Start to analyse %s branch of %s project ...\r\n", branch, proj.Name)
 
 	commitChannel := make(chan commit, 1000)
 	go getCommits(projectId, branch, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
@@ -250,11 +251,11 @@ type branch struct {
 }
 
 func getAllBranches(projectId int) (branches, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", host, projectId)
+	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", host, projectId)
 	method := "GET"
 
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -337,11 +338,11 @@ type project struct {
 }
 
 func getProjectInfo(projectId int) (project, error) {
-	url := host + "/api/v4/projects/" + strconv.Itoa(projectId) + "?statistics=true"
+	urlStr := host + "/api/v4/projects/" + strconv.Itoa(projectId) + "?statistics=true"
 	method := "GET"
 
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
 		return project{}, err
 	}
@@ -376,19 +377,21 @@ type commit struct {
 }
 
 func getCommits(projectId int, branch, since, until string, ch chan commit, parents int) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&since=%s&until=%s&",
-		host, projectId, branch, since, until)
+	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&since=%s&until=%s&",
+		host, projectId, url.QueryEscape(branch), since, until)
 
-	allData, err := getAllPageData(url)
+	allData, err := getAllPageData(urlStr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, data := range allData {
+	for idx, data := range allData {
 		var response commits
 		err = json.Unmarshal(data, &response)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("[WARN] Get %s response from %spage=%d&per_page=%d, and parse response to commits struct throw an error: %s",
+				string(data), urlStr, idx+1, pageSize, err)
+			continue
 		}
 		for _, c := range response {
 			if parents > -1 {
@@ -481,9 +484,9 @@ type diff struct {
 }
 
 func getDiff(projectId int, commitShortId string) (diffs, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits/%s/diff?", host, projectId, commitShortId)
+	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits/%s/diff?", host, projectId, commitShortId)
 
-	allData, err := getAllPageData(url)
+	allData, err := getAllPageData(urlStr)
 	if err != nil {
 		return nil, err
 	}
@@ -517,6 +520,7 @@ func getAllPageData(url string) ([][]byte, error) {
 func getDataByPage(url, page string) ([]byte, string, error) {
 	method := "GET"
 	client := &http.Client{}
+
 	req, err := http.NewRequest(method, fmt.Sprintf("%spage=%s&per_page=%d", url, page, pageSize), nil)
 
 	if err != nil {
