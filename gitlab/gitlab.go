@@ -134,8 +134,14 @@ func parseProjectIds(input string) []int {
 }
 
 func analyseProject(projectId int, br, since, until string, parents, parallel int, lark string) {
+	proj, err := getProjectInfo(projectId)
+	if err != nil || len(proj.Name) == 0 {
+		log.Printf("[WARN] Could not get project info with %d or has error %s", projectId, err)
+		return
+	}
+
 	if len(br) > 0 {
-		analyseProjectBranch(projectId, br, since, until, parents, parallel, lark)
+		analyseProjectBranch(proj, br, since, until, parents, parallel, lark)
 		return
 	}
 	brs, err := getAllBranches(projectId)
@@ -144,23 +150,19 @@ func analyseProject(projectId int, br, since, until string, parents, parallel in
 	}
 	for _, b := range brs {
 		if !b.Merged {
-			analyseProjectBranch(projectId, b.Name, since, until, parents, parallel, lark)
+			analyseProjectBranch(proj, b.Name, since, until, parents, parallel, lark)
 		}
 	}
 }
 
-func analyseProjectBranch(projectId int, br, since, until string, parents, parallel int, lark string) {
-	from := time.Now()
-	proj, err := getProjectInfo(projectId)
-	if err != nil {
-		log.Fatal(err)
-	}
+func analyseProjectBranch(proj project, br, since, until string, parents, parallel int, lark string) {
 	log.Printf("Start to analyse %s branch of %s project ...\r\n", br, proj.Name)
+	from := time.Now()
 
 	commitChannel := make(chan commit, 1000)
-	go getCommits(projectId, br, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
+	go getCommits(proj.Id, br, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
 
-	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", projectId, proj.Name, br, since, until)
+	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", proj.Id, proj.Name, br, since, until)
 	_ = os.Remove(filename)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -175,7 +177,7 @@ func analyseProjectBranch(projectId int, br, since, until string, parents, paral
 
 	rowChannel := make(chan string, 1000)
 	statChannel := make(chan map[string]*stat, parallel)
-	go consumeCommit(projectId, proj.Name, br, parallel, commitChannel, rowChannel, statChannel)
+	go consumeCommit(proj.Id, proj.Name, br, parallel, commitChannel, rowChannel, statChannel)
 
 	for row := range rowChannel {
 		_, err = file.WriteString(row)
@@ -333,6 +335,7 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 }
 
 type project struct {
+	Id     int
 	Name   string
 	WebUrl string `json:"web_url"`
 }
