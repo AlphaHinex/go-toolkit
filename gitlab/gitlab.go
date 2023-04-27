@@ -99,7 +99,7 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Run app failed: %s", err)
 	}
 }
 
@@ -146,7 +146,7 @@ func analyseProject(projectId int, br, since, until string, parents, parallel in
 	}
 	brs, err := getAllBranches(projectId)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Get all branches failed: %s", err)
 	}
 	for _, b := range brs {
 		if !b.Merged {
@@ -166,13 +166,13 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	_ = os.Remove(filename)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Open file failed: %s", err)
 	}
 	defer file.Close()
 
 	_, err = file.WriteString("project\tbranch\tsha\tdate\tauthor\temail\tfilename\tfiletype\toperation\tadd\tdel\taddIgnoreSpace\tdelIgnoreSpace\r\n")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Write file failed: %s", err)
 	}
 
 	rowChannel := make(chan string, 1000)
@@ -183,7 +183,7 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	for row := range rowChannel {
 		_, err = file.WriteString(row)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Write data filed: %s", err)
 		}
 		hasContent = true
 	}
@@ -396,7 +396,7 @@ func getCommits(projectId int, br, since, until string, ch chan commit, parents 
 
 	allData, err := getAllPageData(urlStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Get all page data failed: %s", err)
 	}
 
 	for idx, data := range allData {
@@ -439,7 +439,7 @@ func consumeCommit(projectId int, projectName, br string, parallel int,
 				user.commitCount++
 				diffs, err := getDiff(projectId, c.ShortId)
 				if err != nil {
-					log.Fatal(err)
+					log.Fatalf("Get diff failed: %s", err)
 				}
 				for _, diff := range diffs {
 					op := "MODIFY"
@@ -474,7 +474,7 @@ func consumeCommit(projectId int, projectName, br string, parallel int,
 func toCSTStr(timestamp string) string {
 	t, err := time.Parse(time.RFC3339, timestamp)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Parse time failed: %s", err)
 	}
 
 	// 将解析出来的时间设置为东八区
@@ -502,6 +502,7 @@ func getDiff(projectId int, commitShortId string) (diffs, error) {
 
 	allData, err := getAllPageData(urlStr)
 	if err != nil {
+		log.Printf("505: %s\r\n%s", err, urlStr)
 		return nil, err
 	}
 
@@ -510,6 +511,7 @@ func getDiff(projectId int, commitShortId string) (diffs, error) {
 		var response diffs
 		err = json.Unmarshal(data, &response)
 		if err != nil {
+			log.Printf("Parse %s error: %s", string(data), err)
 			return nil, err
 		}
 		result = append(result, response...)
