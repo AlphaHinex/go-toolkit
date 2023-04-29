@@ -26,13 +26,13 @@ const pageSize = 99
 func main() {
 	app := &cli.App{
 		Name:    "gitlab",
-		Usage:   "Use GitLab API to do some analysis works",
-		Version: "v2.1.0",
+		Usage:   "Use GitLab API to analyse commits",
+		Version: "v2.1.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",
 				Aliases:  []string{"u"},
-				Usage:    "GitLab host url",
+				Usage:    "GitLab host url, required, like https://gitlab.com/",
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -43,7 +43,7 @@ func main() {
 			&cli.StringFlag{
 				Name:     "project-ids",
 				Aliases:  []string{"p"},
-				Usage:    "Project IDs in GitLab, could multi, as 5,7-10,13-25",
+				Usage:    "Project IDs in GitLab, required, could multi: 5,7-10,13-25",
 				Required: true,
 			},
 			&cli.StringFlag{
@@ -264,32 +264,24 @@ type branch struct {
 }
 
 func getAllBranches(projectId int) (branches, error) {
-	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", host, projectId)
-	method := "GET"
+	urlStr := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches?", host, projectId)
 
-	client := &http.Client{}
-	req, err := http.NewRequest(method, urlStr, nil)
+	allData, err := getAllPageData(urlStr)
 	if err != nil {
-		return nil, err
+		log.Fatalf("Get all page data failed: %s", err)
 	}
-	req.Header.Add("PRIVATE-TOKEN", token)
 
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	var result branches
+	for _, data := range allData {
+		var response branches
+		err = json.Unmarshal(data, &response)
+		if err != nil {
+			log.Printf("Parse %s error: %s", string(data), err)
+			return nil, err
+		}
+		result = append(result, response...)
 	}
-	defer res.Body.Close()
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	var response branches
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return result, nil
 }
 
 func sendLarkMsg(url, projectUrl, title, content, desc string) {
