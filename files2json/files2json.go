@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-var channelBuffer = 1000
+var channelBuffer = 100
 var includedFiletypes = ""
 var filesChannel = make(chan string, channelBuffer)
 var converterParallel = 8
@@ -48,27 +48,42 @@ func main() {
 			includedFiletypes = cCtx.String("include")
 			outputDir := cCtx.String("output")
 
-			err := filepath.WalkDir(inputDir, loadFilteredFiles)
-			if err != nil {
-				log.Fatal(err)
-			}
-			close(filesChannel)
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := filepath.WalkDir(inputDir, loadFilteredFiles)
+				if err != nil {
+					log.Fatal(err)
+				}
+				close(filesChannel)
+			}()
 
 			rowChannel := make(chan string, channelBuffer)
-			convertFile2Json(rowChannel, converterParallel)
+			go func() {
+				for i := 0; i < converterParallel; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						convertFile2Json(rowChannel)
+					}()
+				}
+				wg.Wait()
+				close(rowChannel)
+			}()
 
 			f, err := os.OpenFile(path.Join(outputDir, "test.json"), os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
-				return err
+				log.Fatal(err)
 			}
 			defer f.Close()
-
 			for s := range rowChannel {
 				_, err = f.WriteString(s)
 				if err != nil {
-					return err
+					log.Fatal(err)
 				}
 			}
+
 			return nil
 		},
 	}
@@ -91,29 +106,19 @@ func loadFilteredFiles(path string, entry os.DirEntry, _ error) error {
 	return nil
 }
 
-func convertFile2Json(rowChannel chan string, parallel int) {
-	wg := sync.WaitGroup{}
-	wg.Add(parallel)
+func convertFile2Json(rowChannel chan string) {
+	for filePath := range filesChannel {
+		content, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			log.Fatalf("Read %s error: %s", filePath, err)
+		}
 
-	for i := 0; i < parallel; i++ {
-		go func() {
-			for filePath := range filesChannel {
-				content, err := ioutil.ReadFile(filePath)
-				if err != nil {
-					log.Fatalf("Read %s error: %s", filePath, err)
-				}
-
-				// 替换 " 为 \"
-				adjustedContent := strings.ReplaceAll(string(content), `"`, `\"`)
-				// 替换换行符
-				adjustedContent = strings.ReplaceAll(adjustedContent, "\r\n", `\r\n`)
-				adjustedContent = strings.ReplaceAll(adjustedContent, "\n", `\n`)
-				rowChannel <- fmt.Sprintf("{\"text\": \"%s\", \"url\": \"%s\"}\r\n", adjustedContent, filePath)
-			}
-			wg.Done()
-		}()
+		// 替换 " 为 \"
+		adjustedContent := strings.ReplaceAll(string(content), `"`, `\"`)
+		// 替换换行符
+		adjustedContent = strings.ReplaceAll(adjustedContent, "\r\n", `\r\n`)
+		adjustedContent = strings.ReplaceAll(adjustedContent, "\n", `\n`)
+		adjustedContent = strings.ReplaceAll(adjustedContent, "\r", `\r`)
+		rowChannel <- fmt.Sprintf("{\"text\": \"%s\", \"url\": \"%s\"}\r\n", adjustedContent, filePath)
 	}
-
-	wg.Wait()
-	close(rowChannel)
 }
