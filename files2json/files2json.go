@@ -86,7 +86,6 @@ func loadFilteredFiles(path string, entry os.DirEntry, _ error) error {
 	slice := strings.Split(strings.ToLower(entry.Name()), ".")
 	fileType := slice[len(slice)-1]
 	if includedFiletypes == "" || strings.Contains(includedFiletypes, fileType) {
-		//println(path)
 		filesChannel <- path
 	}
 	return nil
@@ -99,7 +98,6 @@ func convertFile2Json(rowChannel chan string, parallel int) {
 	for i := 0; i < parallel; i++ {
 		go func() {
 			for filePath := range filesChannel {
-				//println("consuming " + filePath)
 				content, err := ioutil.ReadFile(filePath)
 				if err != nil {
 					log.Fatalf("Read %s error: %s", filePath, err)
