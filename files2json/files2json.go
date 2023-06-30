@@ -107,7 +107,7 @@ func convertFile2Json(rowChannel chan string, parallel int) {
 
 				// 替换 " 为 \"
 				adjustedContent := strings.ReplaceAll(string(content), `"`, `\"`)
-				// 将换行替换为 \r\n
+				// 替换换行符
 				adjustedContent = strings.ReplaceAll(adjustedContent, "\r\n", `\r\n`)
 				adjustedContent = strings.ReplaceAll(adjustedContent, "\n", `\n`)
 				rowChannel <- fmt.Sprintf("{\"text\": \"%s\", \"url\": \"%s\"}\r\n", adjustedContent, filePath)
