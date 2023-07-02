@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
@@ -106,6 +106,11 @@ func loadFilteredFiles(path string, entry os.DirEntry, _ error) error {
 	return nil
 }
 
+type jsonRow struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
+}
+
 func convertFile2Json(rowChannel chan string) {
 	for filePath := range filesChannel {
 		content, err := ioutil.ReadFile(filePath)
@@ -113,12 +118,11 @@ func convertFile2Json(rowChannel chan string) {
 			log.Fatalf("Read %s error: %s", filePath, err)
 		}
 
-		// 替换 " 为 \"
-		adjustedContent := strings.ReplaceAll(string(content), `"`, `\"`)
-		// 替换换行符
-		adjustedContent = strings.ReplaceAll(adjustedContent, "\r\n", `\r\n`)
-		adjustedContent = strings.ReplaceAll(adjustedContent, "\n", `\n`)
-		adjustedContent = strings.ReplaceAll(adjustedContent, "\r", `\r`)
-		rowChannel <- fmt.Sprintf("{\"text\": \"%s\", \"url\": \"%s\"}\r\n", adjustedContent, filePath)
+		row := jsonRow{Text: string(content), URL: filePath}
+		rowByte, err := json.Marshal(row)
+		if err != nil {
+			log.Fatalf("Marshal %s error: %s", row, err)
+		}
+		rowChannel <- string(rowByte) + "\r\n"
 	}
 }
