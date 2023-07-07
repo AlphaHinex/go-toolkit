@@ -3,4 +3,6 @@
 *.csv
 *.zip
 *.exe
+*.json
+*.cookie
 build/
