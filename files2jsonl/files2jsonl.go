@@ -39,7 +39,7 @@ func main() {
 				Name:    "output",
 				Aliases: []string{"o"},
 				Value:   ".",
-				Usage:   "Output JSON file path",
+				Usage:   "Output JSON lines file's directory",
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
@@ -71,22 +71,7 @@ func main() {
 				close(rowChannel)
 			}()
 
-			// 判断 outputDir 是文件还是路径
-			fileInfo, err := os.Stat(outputDir)
-			if err != nil {
-				log.Fatal("无法获取文件/目录信息:", err)
-			}
-			outputFile := ""
-			// 判断是否为文件
-			if fileInfo.Mode().IsRegular() {
-				outputFile = outputDir
-			} else if fileInfo.Mode().IsDir() {
-				outputFile = filepath.Join(outputDir, "data.jsonl")
-			} else {
-				log.Fatal("{} 既不是文件也不是目录", outputDir)
-			}
-
-			f, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE, 0644)
+			f, err := os.OpenFile(filepath.Join(outputDir, "data.jsonl"), os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
 				log.Fatal(err)
 			}
