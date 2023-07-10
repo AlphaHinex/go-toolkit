@@ -41,7 +41,7 @@ func main() {
 				Name:    "output",
 				Aliases: []string{"o"},
 				Value:   ".",
-				Usage:   "Output JSON lines file's directory",
+				Usage:   "Output JSON lines file",
 			},
 			&cli.BoolFlag{
 				Name:  "gz",
@@ -52,7 +52,7 @@ func main() {
 		Action: func(cCtx *cli.Context) error {
 			inputDir := cCtx.String("dir")
 			includedFiletypes = cCtx.String("include")
-			outputDir := cCtx.String("output")
+			output := cCtx.String("output")
 			gz := cCtx.Bool("gz")
 
 			wg := sync.WaitGroup{}
@@ -79,7 +79,11 @@ func main() {
 				close(rowChannel)
 			}()
 
-			f, err := os.OpenFile(filepath.Join(outputDir, "data.jsonl"), os.O_WRONLY|os.O_CREATE, 0644)
+			outputFilePath := output
+			if output == "." || strings.HasSuffix(output, string(filepath.Separator)) {
+				outputFilePath = filepath.Join(output, "data.jsonl")
+			}
+			f, err := os.OpenFile(outputFilePath, os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -88,7 +92,7 @@ func main() {
 			var gzFile *os.File
 			var gzipWriter *gzip.Writer
 			if gz {
-				gzFile, err = os.Create(filepath.Join(outputDir, "data.jsonl.gz"))
+				gzFile, err = os.Create(outputFilePath + ".gz")
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -123,14 +127,16 @@ func main() {
 }
 
 func loadFilteredFiles(path string, entry os.DirEntry, _ error) error {
-	if entry.IsDir() {
+	if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 		return nil
 	}
 
-	slice := strings.Split(strings.ToLower(entry.Name()), ".")
+	slice := strings.Split(entry.Name(), ".")
 	fileType := slice[len(slice)-1]
-	if includedFiletypes == "" || strings.Contains(includedFiletypes, fileType) {
+	if includedFiletypes == "" || strings.Contains(includedFiletypes, strings.ToLower(fileType)) {
 		filesChannel <- path
+	} else {
+		log.Printf("%s excluded because [%s] not in --include parameter.", entry.Name(), fileType)
 	}
 	return nil
 }

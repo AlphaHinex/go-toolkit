@@ -16,8 +16,11 @@ Files to JSON Lines
 用法示例：
 
 ```bash
-./files2jsonl -d /path/to/src -i xml,java,yml,properties,json
+./files2jsonl -d /path/to/src \
+-i xml,pom,java,groovy,yml,yaml,properties,json,htm,vue,json,html,js,md,sh \
+-o /path/to/target
 ```
 
 - `-d` 指定源文件路径
-- `-i` 指定文件类型
+- `-i` 指定需要包含的文件类型，不区分大小写，可省略，表示包含全部文件
+- `-o` 指定输出文件路径，默认输出到当前路径
