@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,8 +18,8 @@ var converterParallel = 8
 
 func main() {
 	app := &cli.App{
-		Name:    "files2json",
-		Usage:   "Convert selected files into one json file",
+		Name:    "files2jsonl",
+		Usage:   "Convert selected files into one JSON lines file",
 		Version: "v2.2.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -72,7 +71,22 @@ func main() {
 				close(rowChannel)
 			}()
 
-			f, err := os.OpenFile(path.Join(outputDir, "test.json"), os.O_WRONLY|os.O_CREATE, 0644)
+			// 判断 outputDir 是文件还是路径
+			fileInfo, err := os.Stat(outputDir)
+			if err != nil {
+				log.Fatal("无法获取文件/目录信息:", err)
+			}
+			outputFile := ""
+			// 判断是否为文件
+			if fileInfo.Mode().IsRegular() {
+				outputFile = outputDir
+			} else if fileInfo.Mode().IsDir() {
+				outputFile = filepath.Join(outputDir, "data.jsonl")
+			} else {
+				log.Fatal("{} 既不是文件也不是目录", outputDir)
+			}
+
+			f, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
 				log.Fatal(err)
 			}
