@@ -136,7 +136,7 @@ func loadFilteredFiles(path string, entry os.DirEntry, _ error) error {
 	if includedFiletypes == "" || strings.Contains(includedFiletypes, strings.ToLower(fileType)) {
 		filesChannel <- path
 	} else {
-		log.Printf("%s excluded because [%s] not in --include parameter.", entry.Name(), fileType)
+		log.Printf("Exclude [%s] type file: %s, because the file type not in --include parameter.", fileType, path)
 	}
 	return nil
 }

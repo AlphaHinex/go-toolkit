@@ -17,7 +17,7 @@ Files to JSON Lines
 
 ```bash
 ./files2jsonl -d /path/to/src \
--i xml,pom,java,groovy,yml,yaml,properties,json,htm,vue,json,html,js,md,sh \
+-i xml,pom,java,groovy,yml,yaml,properties,json,sql,htm,vue,json,html,js,md,sh \
 -o /path/to/target
 ```
 
