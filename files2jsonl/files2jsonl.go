@@ -1,8 +1,10 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"github.com/urfave/cli/v2"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -41,11 +43,17 @@ func main() {
 				Value:   ".",
 				Usage:   "Output JSON lines file's directory",
 			},
+			&cli.BoolFlag{
+				Name:  "gz",
+				Value: true,
+				Usage: "Generate a gzip file at the same time",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			inputDir := cCtx.String("dir")
 			includedFiletypes = cCtx.String("include")
 			outputDir := cCtx.String("output")
+			gz := cCtx.Bool("gz")
 
 			wg := sync.WaitGroup{}
 			wg.Add(1)
@@ -76,10 +84,32 @@ func main() {
 				log.Fatal(err)
 			}
 			defer f.Close()
+
+			var gzFile *os.File
+			var gzipWriter *gzip.Writer
+			if gz {
+				gzFile, err = os.Create(filepath.Join(outputDir, "data.jsonl.gz"))
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer gzFile.Close()
+				// 创建gzip写入器
+				gzipWriter = gzip.NewWriter(gzFile)
+				defer func(gzipWriter *gzip.Writer) {
+					_ = gzipWriter.Close()
+				}(gzipWriter)
+			}
+
 			for s := range rowChannel {
 				_, err = f.WriteString(s)
 				if err != nil {
 					log.Fatal(err)
+				}
+				if gz {
+					_, err := io.WriteString(gzipWriter, s)
+					if err != nil {
+						log.Fatal(err)
+					}
 				}
 			}
 
