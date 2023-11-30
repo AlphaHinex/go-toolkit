@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -157,7 +158,9 @@ type measures struct {
 }
 
 func printCsv(projects []string) error {
-	fmt.Printf("Project,Bugs,Vulnerabilities,Hotspots Reviewed,Code Smells,Coverage,Duplications,Lines,NCLOC Language Distribution\n")
+	fmt.Println("Project," +
+		"Bugs,Vulnerabilities,Hotspots Reviewed,Code Smells,Coverage,Duplications,Lines,NCLOC Language Distribution," +
+		"Size,Duplications*Lines,Bug/Lines*1k%,Code Smells/Lines*1k%")
 
 	dict := make(map[string]int, 8)
 	dict["bugs"] = 1
@@ -181,7 +184,49 @@ func printCsv(projects []string) error {
 			}
 			line[dict[measure.Metric]] = measure.Value
 		}
-		fmt.Printf("%s\n", strings.Join(line, ","))
+		computed, err := getComputedValues(line, dict)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s,%s\n", strings.Join(line, ","), strings.Join(computed, ","))
 	}
 	return nil
+}
+
+func getComputedValues(line []string, dict map[string]int) ([]string, error) {
+	computed := []string{"-", "-", "-", "-"}
+
+	lines, err := strconv.Atoi(line[dict["ncloc"]])
+	if err != nil || lines == 0 {
+		return computed, nil
+	}
+
+	if lines > 500_000 {
+		computed[0] = "XL"
+	} else if lines > 100_000 {
+		computed[0] = "L"
+	} else if lines > 10_000 {
+		computed[0] = "M"
+	} else if lines > 1_000 {
+		computed[0] = "S"
+	} else {
+		computed[0] = "XS"
+	}
+
+	duplications, err := strconv.ParseFloat(line[dict["duplicated_lines_density"]], 32)
+	if err == nil {
+		computed[1] = fmt.Sprintf("%f", float32(duplications)*float32(lines)/100)
+	}
+
+	bug, err := strconv.Atoi(line[dict["bugs"]])
+	if err == nil {
+		computed[2] = fmt.Sprintf("%f", float32(bug)/float32(lines)*1000)
+	}
+
+	codeSmells, err := strconv.Atoi(line[dict["code_smells"]])
+	if err == nil {
+		computed[3] = fmt.Sprintf("%f", float32(codeSmells)/float32(lines)*1000)
+	}
+
+	return computed, nil
 }
