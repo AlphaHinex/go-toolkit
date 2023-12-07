@@ -20,3 +20,49 @@ $ GOOS=windows GOARCH=amd64 go build -o test_win_amd64.exe
 ```
 
 > 更多可用的 GOOS 和 GOARCH 组合可参照 https://golang.google.cn/doc/install/source#environment 。
+
+Template
+--------
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/urfave/cli/v2"
+)
+
+func main() {
+	app := &cli.App{
+		Name:    "sonar-exp",
+		Usage:   "Export sonar projects info into csv",
+		Version: "v2.2.0",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "host",
+				Usage:    "Sonar host",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "token",
+				Aliases:  []string{"t"},
+				Usage:    "User token",
+				Required: true,
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+			host := cCtx.String("host")
+			token := cCtx.String("token")
+			fmt.Printf("boom! I say! %s, %s", host, token)
+			return nil
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+```
