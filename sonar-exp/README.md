@@ -1,7 +1,7 @@
 Sonar Project Overall Status Exporter
 =====================================
 
-Tested on Sonar 8.9
+Tested on Sonar 8.9 and 10.3
 
 http://localhost:9000/projects?search=ds-3&sort=duplications
 
