@@ -1,5 +1,5 @@
-Sonar Project Overall Status Exporter
-=====================================
+Sonar Projects Overall Status Exporter
+======================================
 
 Tested on Sonar 8.9 and 10.3
 
