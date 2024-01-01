@@ -7,12 +7,14 @@ import (
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -47,6 +49,11 @@ func main() {
 				Name:  "dingtalk-token",
 				Usage: "DingTalk token to send msg to robot",
 			},
+			&cli.IntFlag{
+				Name:    "random-pick",
+				Aliases: []string{"rp"},
+				Usage:   "Number of random pick contents",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			cookie := cCtx.String("cookie")
@@ -55,6 +62,7 @@ func main() {
 			savedOnly := cCtx.Bool("saved-only")
 			outputPath := cCtx.String("o")
 			dingTalkToken := cCtx.String("dingtalk-token")
+			randomPick := cCtx.Int("random-pick")
 
 			if len(cookie) == 0 {
 				content, err := os.ReadFile(cookieFilePath)
@@ -86,6 +94,24 @@ func main() {
 			}
 
 			growDetails(token, cookie, outputPath, dingTalkToken)
+
+			if randomPick > 0 {
+				// 获得 postMap 的所有 key 集合
+				keys := make([]int64, 0, len(postMap))
+				for k := range postMap {
+					keys = append(keys, k)
+				}
+				for i := 0; i < randomPick; i++ {
+					// 随机选择一个 key
+					rand.Seed(time.Now().UnixNano())
+					randomIndex := rand.Intn(len(keys))
+					randomKey := keys[randomIndex]
+					// 随机选择一个 value
+					randomValue := postMap[randomKey]
+					fmt.Printf("[![%s](%s)](%s)\r\n\r\n", randomValue.Title, randomValue.Cover, randomValue.ContentUrl)
+				}
+			}
+
 			return nil
 		},
 	}
@@ -126,6 +152,7 @@ var totalReadInc, totalLookInc, totalLikeInc, count, totalRead = 0, 0, 0, 0, 0
 type postStat struct {
 	Time       int    `json:"time"`
 	Title      string `json:"title"`
+	Cover      string `json:"cover"`
 	ContentUrl string `json:"content_url"`
 	Read       int    `json:"read"`
 	Look       int    `json:"look"`
@@ -357,6 +384,7 @@ func parsePageData(pageData string) int {
 			postMap[appmsgInfo.Appmsgid] = postStat{
 				Time:       publishInfo.SentInfo.Time,
 				Title:      appmsgInfo.Title,
+				Cover:      appmsgInfo.Cover,
 				ContentUrl: strings.Split(strings.ReplaceAll(appmsgInfo.ContentUrl, "&amp;", "&"), "&chksm=")[0],
 				Read:       appmsgInfo.ReadNum,
 				Look:       appmsgInfo.LikeNum,
