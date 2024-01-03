@@ -503,8 +503,9 @@ func getDiff(projectId int, commitShortId string) (diffs, error) {
 		var response diffs
 		err = json.Unmarshal(data, &response)
 		if err != nil {
+			log.Printf("Request %s get response %s", urlStr, string(data))
 			log.Printf("Parse %s error: %s", string(data), err)
-			return nil, err
+			continue
 		}
 		result = append(result, response...)
 	}
