@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var quiet = false
@@ -25,7 +26,7 @@ func main() {
 	app := &cli.App{
 		Name:    "mdnice",
 		Usage:   "Upload pictures to mdnice",
-		Version: "v2.3.0",
+		Version: "v2.3.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
@@ -164,8 +165,22 @@ func handleOneFile(filepath, token, imgPathPrefix string) (string, string) {
 		uploadImgInMarkdown(filepath, token, imgPathPrefix)
 		return "", ""
 	} else {
+		retry := 2
 		link, err := upload(filepath, token)
 		if err != nil {
+			for retry > 0 {
+				retry--
+				time.Sleep(1 * time.Second)
+				link, err = upload(filepath, token)
+				if err == nil {
+					break
+				} else {
+					continue
+				}
+			}
+
+		}
+		if retry == 0 && err != nil {
 			if !quiet {
 				fmt.Printf("Failed to upload %s\r\n", filepath)
 			}
