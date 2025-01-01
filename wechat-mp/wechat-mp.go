@@ -54,6 +54,10 @@ func main() {
 				Aliases: []string{"rp"},
 				Usage:   "Number of random pick contents",
 			},
+			&cli.BoolFlag{
+				Name:  "all",
+				Usage: "Print all post statistic info",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			cookie := cCtx.String("cookie")
@@ -63,6 +67,7 @@ func main() {
 			outputPath := cCtx.String("o")
 			dingTalkToken := cCtx.String("dingtalk-token")
 			randomPick := cCtx.Int("random-pick")
+			all := cCtx.Bool("all")
 
 			if len(cookie) == 0 {
 				content, err := os.ReadFile(cookieFilePath)
@@ -101,6 +106,7 @@ func main() {
 				for k := range postMap {
 					keys = append(keys, k)
 				}
+
 				for i := 0; i < randomPick; i++ {
 					// 随机选择一个 key
 					rand.Seed(time.Now().UnixNano())
@@ -109,6 +115,14 @@ func main() {
 					// 随机选择一个 value
 					randomValue := postMap[randomKey]
 					fmt.Printf("[![%s](%s)](%s)\r\n\r\n", randomValue.Title, randomValue.Cover, randomValue.ContentUrl)
+				}
+			}
+
+			if all {
+				for _, post := range postMap {
+					fmt.Printf("%s [![%s](%s)](%s) 阅读 %d / 点赞 %d / 在看 %d / 评论 %d / 分享 %d / 转载 %d\r\n\r\n",
+						time.Unix(post.Time, 0).Format("2006-01-02"), post.Title, post.Cover, post.ContentUrl,
+						post.Read, post.Like, post.Look, post.Comment, post.Share, post.Citation)
 				}
 			}
 
@@ -149,14 +163,18 @@ var lastStat = map[int64]postStat{}
 var postMap = map[int64]postStat{}
 var totalReadInc, totalLookInc, totalLikeInc, count, totalRead = 0, 0, 0, 0, 0
 
+// 文章统计信息
 type postStat struct {
-	Time       int    `json:"time"`
+	Time       int64  `json:"time"`
 	Title      string `json:"title"`
 	Cover      string `json:"cover"`
 	ContentUrl string `json:"content_url"`
-	Read       int    `json:"read"`
-	Look       int    `json:"look"`
-	Like       int    `json:"like"`
+	Read       int    `json:"read"`     // 阅读
+	Look       int    `json:"look"`     // 在看
+	Like       int    `json:"like"`     // 点赞
+	Share      int    `json:"share"`    // 分享
+	Comment    int    `json:"comment"`  // 评论
+	Citation   int    `json:"citation"` // 转载
 }
 
 func growDetails(token int, cookie, outputPath, dingTalkToken string) {
@@ -291,17 +309,20 @@ type pageResponse struct {
 
 type publishInfo struct {
 	SentInfo struct {
-		Time int `json:"time"`
+		Time int64 `json:"time"`
 	} `json:"sent_info"`
 	AppmsgInfo []struct {
 		Appmsgid   int64  `json:"appmsgid"`
 		ContentUrl string `json:"content_url"`
+		Cover      string `json:"pic_cdn_url_235_1"`
 		Title      string `json:"title"`
-		ReadNum    int    `json:"read_num"`
-		LikeNum    int    `json:"like_num"`
-		Cover      string `json:"cover"`
-		OldLikeNum int    `json:"old_like_num"`
 		Digest     string `json:"digest"`
+		ReadNum    int    `json:"read_num"`     // 阅读人数
+		LikeNum    int    `json:"like_num"`     // 在看人数
+		OldLikeNum int    `json:"old_like_num"` // 点赞人数
+		ShareNum   int    `json:"share_num"`    // 分享人数
+		CommentNum int    `json:"comment_num"`  // 留言条数
+		ReprintNum int    `json:"reprint_num"`  // 转载次数
 	} `json:"appmsg_info"`
 	MsgId int `json:"msg_id"`
 }
@@ -389,6 +410,9 @@ func parsePageData(pageData string) int {
 				Read:       appmsgInfo.ReadNum,
 				Look:       appmsgInfo.LikeNum,
 				Like:       appmsgInfo.OldLikeNum,
+				Share:      appmsgInfo.ShareNum,
+				Comment:    appmsgInfo.CommentNum,
+				Citation:   appmsgInfo.ReprintNum,
 			}
 		}
 	}
