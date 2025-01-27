@@ -159,9 +159,13 @@ func getToken(cookie string) (int, error) {
 	}
 }
 
-var lastStat = map[int64]postStat{}
-var postMap = map[int64]postStat{}
 var totalReadInc, totalLookInc, totalLikeInc, count, totalRead = 0, 0, 0, 0, 0
+
+// 上次统计结果，用于与最新统计结果进行对比
+var lastStat = map[int64]postStat{}
+
+// 最终持久化的数据结构，key: appmsgid, value: postStat
+var postMap = map[int64]postStat{}
 
 // 文章统计信息
 type postStat struct {
