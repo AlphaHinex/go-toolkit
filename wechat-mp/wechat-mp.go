@@ -58,6 +58,22 @@ func main() {
 				Name:  "all",
 				Usage: "Print all post statistic info",
 			},
+			&cli.StringFlag{
+				Name:  "start-date",
+				Usage: "Start date for statistics in format YYYY-MM-DD",
+			},
+			&cli.StringFlag{
+				Name:  "end-date",
+				Usage: "End date for statistics in format YYYY-MM-DD",
+			},
+			&cli.StringFlag{
+				Name:  "sort-field",
+				Usage: "Field to sort by (read, like, look, comment, share, citation)",
+			},
+			&cli.IntFlag{
+				Name:  "top",
+				Usage: "Number of top results to output",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			cookie := cCtx.String("cookie")
@@ -68,6 +84,10 @@ func main() {
 			dingTalkToken := cCtx.String("dingtalk-token")
 			randomPick := cCtx.Int("random-pick")
 			all := cCtx.Bool("all")
+			startDate := cCtx.String("start-date")
+			endDate := cCtx.String("end-date")
+			sortField := cCtx.String("sort-field")
+			topN := cCtx.Int("top")
 
 			if len(cookie) == 0 {
 				content, err := os.ReadFile(cookieFilePath)
@@ -100,26 +120,22 @@ func main() {
 
 			growDetails(token, cookie, outputPath, dingTalkToken)
 
-			if randomPick > 0 {
-				// 获得 postMap 的所有 key 集合
-				keys := make([]int64, 0, len(postMap))
-				for k := range postMap {
-					keys = append(keys, k)
-				}
+			// TODO startDate, endDate should affect the growDetails function
+			filteredPostStats := filterAndSortPostMap(startDate, endDate, sortField, topN)
 
+			if randomPick > 0 {
 				for i := 0; i < randomPick; i++ {
-					// 随机选择一个 key
+					// 随机选择一个索引
 					rand.Seed(time.Now().UnixNano())
-					randomIndex := rand.Intn(len(keys))
-					randomKey := keys[randomIndex]
-					// 随机选择一个 value
-					randomValue := postMap[randomKey]
+					randomIndex := rand.Intn(len(filteredPostStats))
+					// 随机选择一个元素
+					randomValue := filteredPostStats[randomIndex]
 					fmt.Printf("[![%s](%s)](%s)\r\n\r\n", randomValue.Title, randomValue.Cover, randomValue.ContentUrl)
 				}
 			}
 
 			if all {
-				for _, post := range postMap {
+				for _, post := range filteredPostStats {
 					fmt.Printf("%s [![%s](%s)](%s) 阅读 %d / 点赞 %d / 在看 %d / 评论 %d / 分享 %d / 转载 %d\r\n\r\n",
 						time.Unix(post.Time, 0).Format("2006-01-02"), post.Title, post.Cover, post.ContentUrl,
 						post.Read, post.Like, post.Look, post.Comment, post.Share, post.Citation)
@@ -159,9 +175,13 @@ func getToken(cookie string) (int, error) {
 	}
 }
 
-var lastStat = map[int64]postStat{}
-var postMap = map[int64]postStat{}
 var totalReadInc, totalLookInc, totalLikeInc, count, totalRead = 0, 0, 0, 0, 0
+
+// 上次统计结果，用于与最新统计结果进行对比
+var lastStat = map[int64]postStat{}
+
+// 最终持久化的数据结构，key: appmsgid, value: postStat
+var postMap = map[int64]postStat{}
 
 // 文章统计信息
 type postStat struct {
@@ -235,7 +255,10 @@ func growDetails(token int, cookie, outputPath, dingTalkToken string) {
 
 ### 增长明细
 
-%s`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, ""))
+%s
+
+---
+`, totalReadInc, totalLikeInc, totalLookInc, count, totalRead, strings.Join(msg, ""))
 	fmt.Println(statInfo)
 
 	if len(dingTalkToken) > 0 || len(msg) > 0 {
@@ -484,4 +507,66 @@ func getGrowthFactories(str string) [3]int {
 		ints[i], _ = strconv.Atoi(strs[i])
 	}
 	return ints
+}
+
+func filterAndSortPostMap(startDate, endDate, sortField string, topN int) []postStat {
+	// 解析起止日期
+	var startTime, endTime int64
+	if startDate != "" {
+		t, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			log.Println("Invalid start date format", err)
+			return nil
+		}
+		startTime = t.Unix()
+	}
+	if endDate != "" {
+		t, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			log.Println("Invalid end date format", err)
+			return nil
+		}
+		endTime = t.Unix()
+	}
+
+	// 过滤 postMap
+	filteredPostMap := map[int64]postStat{}
+	for key, val := range postMap {
+		if (startTime == 0 || val.Time >= startTime) && (endTime == 0 || val.Time <= endTime) {
+			filteredPostMap[key] = val
+		}
+	}
+
+	// 排序
+	sortedPosts := make([]postStat, 0, len(filteredPostMap))
+	for _, val := range filteredPostMap {
+		sortedPosts = append(sortedPosts, val)
+	}
+	sort.Slice(sortedPosts, func(i, j int) bool {
+		switch sortField {
+		case "read":
+			return sortedPosts[i].Read > sortedPosts[j].Read
+		case "like":
+			return sortedPosts[i].Like > sortedPosts[j].Like
+		case "look":
+			return sortedPosts[i].Look > sortedPosts[j].Look
+		case "comment":
+			return sortedPosts[i].Comment > sortedPosts[j].Comment
+		case "share":
+			return sortedPosts[i].Share > sortedPosts[j].Share
+		case "citation":
+			return sortedPosts[i].Citation > sortedPosts[j].Citation
+		default:
+			return sortedPosts[i].Read > sortedPosts[j].Read
+		}
+	})
+
+	if topN > 0 {
+		// return topN results
+		if topN > len(sortedPosts) {
+			topN = len(sortedPosts)
+		}
+		return sortedPosts[:topN]
+	}
+	return sortedPosts
 }
