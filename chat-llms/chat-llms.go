@@ -200,7 +200,7 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 		suffix = "_stream"
 	}
 	fileName := fmt.Sprintf("%s/%s_%v%s_%d.txt", outputFolder, id, temperature, suffix, idx)
-	err = os.WriteFile(fileName, []byte(content), 0644)
+	err = os.WriteFile(fileName, []byte(fmt.Sprintf("%s\r\n\r\n%s", fileName, content)), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件失败: %v", err)
 	}
