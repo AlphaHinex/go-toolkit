@@ -26,7 +26,7 @@ func main() {
 				Name:     "repeat",
 				Aliases:  []string{"r"},
 				Usage:    "Repeat times of every temperature, default 3.",
-				Value:    1,
+				Value:    3,
 				Required: false,
 			},
 		},
