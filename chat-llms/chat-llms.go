@@ -25,14 +25,36 @@ func main() {
 			&cli.IntFlag{
 				Name:     "repeat",
 				Aliases:  []string{"r"},
-				Usage:    "Repeat times of every temperature, default 3.",
+				Usage:    "Repeat times of every temperature, default 3",
 				Value:    3,
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "output-folder",
+				Aliases:  []string{"o"},
+				Usage:    "Folder of output txt files, default ./result",
+				Value:    "./result",
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "system-prompt",
+				Aliases:  []string{"sp"},
+				Usage:    "System prompt txt file path, default ./system_prompt.txt",
+				Value:    "./system_prompt.txt",
 				Required: false,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			systemPromptFilePath := cCtx.String("system-prompt")
 			repeatTimes := cCtx.Int("repeat")
-			doChat(repeatTimes)
+			outputFolder := cCtx.String("output-folder")
+
+			err := os.MkdirAll(outputFolder, 0755)
+			if err != nil {
+				return fmt.Errorf("创建文件夹失败: %v", err)
+			}
+
+			doChat(systemPromptFilePath, repeatTimes, outputFolder)
 			return nil
 		},
 	}
@@ -42,8 +64,8 @@ func main() {
 	}
 }
 
-func doChat(repeatTimes int) {
-	systemPrompt, err := readSystemPrompt()
+func doChat(systemPromptFilePath string, repeatTimes int, outputFolder string) {
+	systemPrompt, err := readSystemPrompt(systemPromptFilePath)
 	if err != nil {
 		fmt.Println("读取系统提示词失败:", err)
 		return
@@ -80,13 +102,13 @@ func doChat(repeatTimes int) {
 				for i := 0; i < repeatTimes; i++ {
 					fmt.Printf("调用模型 %s 温度 %.2f 非流式接口第 %d 次……\n", id, temp, i+1)
 					// 调用普通接口
-					err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i)
+					err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i, outputFolder)
 					if err != nil {
 						fmt.Printf("调用模型 %s 温度 %.2f 非流式接口失败: %v\n", id, temp, err)
 					}
 					fmt.Printf("调用模型 %s 温度 %.2f 流式接口第 %d 次……\n", id, temp, i+1)
 					// 调用流式接口
-					err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i)
+					err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i, outputFolder)
 					if err != nil {
 						fmt.Printf("调用模型 %s 温度 %.2f 流式接口失败: %v\n", id, temp, err)
 					}
@@ -99,7 +121,7 @@ func doChat(repeatTimes int) {
 	fmt.Println("所有模型调用完成！")
 }
 
-func callAPI(id string, model ModelConfig, temperature float64, isStream bool, systemPrompt string, chatHistory []ChatMessage, idx int) error {
+func callAPI(id string, model ModelConfig, temperature float64, isStream bool, systemPrompt string, chatHistory []ChatMessage, idx int, outputFolder string) error {
 	messages := make([]Message, 0)
 	messages = append(messages, Message{Role: "system", Content: systemPrompt})
 	for _, msg := range chatHistory {
@@ -177,7 +199,7 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 	if isStream {
 		suffix = "_stream"
 	}
-	fileName := fmt.Sprintf("%s_%v%s_%d.txt", id, temperature, suffix, idx)
+	fileName := fmt.Sprintf("%s/%s_%v%s_%d.txt", outputFolder, id, temperature, suffix, idx)
 	err = os.WriteFile(fileName, []byte(content), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件失败: %v", err)
@@ -187,8 +209,8 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 	return nil
 }
 
-func readSystemPrompt() (string, error) {
-	content, err := os.ReadFile("system_prompt.txt")
+func readSystemPrompt(systemPromptFilePath string) (string, error) {
+	content, err := os.ReadFile(systemPromptFilePath)
 	if err != nil {
 		return "", fmt.Errorf("读取系统提示词失败: %v", err)
 	}
