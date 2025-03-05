@@ -16,45 +16,127 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var systemPromptTemplate = `请在此处填写系统提示词。
+可多行。
+也可以为空。
+`
+
+var chatHistoryTemplate = `[
+    {
+        "role": "user",
+        "content": "此处内容代表用户的第一个问题。"
+    },
+    {
+        "role": "assistant",
+        "content": "此处代表对上一个用户问题的回答。"
+    },
+    {
+        "role": "user",
+        "content": "需以用户角色的内容结尾，代表用户最后的问题（即至少要有一个用户角色的内容）。"
+    }
+]
+`
+
+var modelsConfigTemplate = `模型1_ID:
+  endpoint: https://api.openai.com
+  api-key: sk-xxxxxxxx
+  model: text-davinci-003
+  temperatures:
+    - 0.5
+    - 0.7
+    - 0.9
+  enabled: true
+模型2_ID:
+  endpoint: https://api.openai.com
+  api-key: sk-xxxxxxxx
+  model: GPT-4o
+  temperatures:
+    - 0.5
+    - 0.7
+    - 0.9
+  enabled: false
+`
+
+var modelsConfigFilePath = ""
+var systemPromptFilePath = ""
+var chatHistoryFilePath = ""
+var repeatTimes = 0
+var outputFolder = ""
+
 func main() {
 	app := &cli.App{
 		Name:    "chat-llms",
-		Usage:   "Chat with multi-LLMs at the same time",
+		Usage:   "Chat with multi-LLMs at the same time.",
 		Version: "v2.3.1",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:     "repeat",
 				Aliases:  []string{"r"},
-				Usage:    "Repeat times of every temperature, default 3",
+				Usage:    "Repeat times of every temperature, default is 3 .",
 				Value:    3,
 				Required: false,
 			},
 			&cli.StringFlag{
 				Name:     "output-folder",
 				Aliases:  []string{"o"},
-				Usage:    "Folder of output txt files, default ./result",
+				Usage:    "Folder of output txt files, default is ./result .",
 				Value:    "./result",
 				Required: false,
 			},
 			&cli.StringFlag{
 				Name:     "system-prompt",
-				Aliases:  []string{"sp"},
-				Usage:    "System prompt txt file path, default ./system_prompt.txt",
+				Aliases:  []string{"s"},
+				Usage:    "System prompt txt file path, default is ./system_prompt.txt .",
 				Value:    "./system_prompt.txt",
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "chat-history",
+				Aliases:  []string{"u"},
+				Usage:    "Chat history with user input content JSON file path, default is ./chat_history.json .",
+				Value:    "./chat_history.json",
+				Required: false,
+			},
+			&cli.StringFlag{
+				Name:     "models-config",
+				Aliases:  []string{"c"},
+				Usage:    "LLM models config file path, default is ./models_config.yaml .",
+				Value:    "./models_config.yaml",
+				Required: false,
+			},
+			&cli.BoolFlag{
+				Name:     "templates",
+				Aliases:  []string{"t"},
+				Usage:    "Generate template files of system_prompt.txt, chat_history.json and models_config.yaml in current path.",
+				Value:    false,
 				Required: false,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			systemPromptFilePath := cCtx.String("system-prompt")
-			repeatTimes := cCtx.Int("repeat")
-			outputFolder := cCtx.String("output-folder")
+			needTemplates := cCtx.Bool("templates")
+			modelsConfigFilePath = cCtx.String("models-config")
+			systemPromptFilePath = cCtx.String("system-prompt")
+			chatHistoryFilePath = cCtx.String("chat-history")
+			repeatTimes = cCtx.Int("repeat")
+			outputFolder = cCtx.String("output-folder")
 
-			err := os.MkdirAll(outputFolder, 0755)
-			if err != nil {
-				return fmt.Errorf("创建文件夹失败: %v", err)
+			if needTemplates {
+				err1 := os.WriteFile("system_prompt.txt", []byte(systemPromptTemplate), 0644)
+				err2 := os.WriteFile("chat_history.json", []byte(chatHistoryTemplate), 0644)
+				err3 := os.WriteFile("models_config.yaml", []byte(modelsConfigTemplate), 0644)
+				if err1 != nil || err2 != nil || err3 != nil {
+					return fmt.Errorf("生成模板文件失败: %v, %v, %v", err1, err2, err3)
+				} else {
+					fmt.Println("生成模板文件成功！")
+				}
+			} else {
+				err := os.MkdirAll(outputFolder, 0755)
+				if err != nil {
+					return fmt.Errorf("创建文件夹失败: %v", err)
+				}
+
+				doChat()
 			}
-
-			doChat(systemPromptFilePath, repeatTimes, outputFolder)
 			return nil
 		},
 	}
@@ -64,8 +146,8 @@ func main() {
 	}
 }
 
-func doChat(systemPromptFilePath string, repeatTimes int, outputFolder string) {
-	systemPrompt, err := readSystemPrompt(systemPromptFilePath)
+func doChat() {
+	systemPrompt, err := readSystemPrompt()
 	if err != nil {
 		fmt.Println("读取系统提示词失败:", err)
 		return
@@ -209,7 +291,7 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 	return nil
 }
 
-func readSystemPrompt(systemPromptFilePath string) (string, error) {
+func readSystemPrompt() (string, error) {
 	content, err := os.ReadFile(systemPromptFilePath)
 	if err != nil {
 		return "", fmt.Errorf("读取系统提示词失败: %v", err)
@@ -218,7 +300,7 @@ func readSystemPrompt(systemPromptFilePath string) (string, error) {
 }
 
 func readChatHistory() ([]ChatMessage, error) {
-	content, err := os.ReadFile("chat_history.json")
+	content, err := os.ReadFile(chatHistoryFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("读取对话记录失败: %v", err)
 	}
@@ -231,7 +313,7 @@ func readChatHistory() ([]ChatMessage, error) {
 }
 
 func readModelConfig() (*Config, error) {
-	content, err := os.ReadFile("models_config.yaml")
+	content, err := os.ReadFile(modelsConfigFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("读取模型配置失败: %v", err)
 	}
