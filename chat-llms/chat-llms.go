@@ -121,9 +121,9 @@ func main() {
 			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
-				err1 := os.WriteFile("system_prompt.txt", []byte(systemPromptTemplate), 0644)
-				err2 := os.WriteFile("chat_history.json", []byte(chatHistoryTemplate), 0644)
-				err3 := os.WriteFile("models_config.yaml", []byte(modelsConfigTemplate), 0644)
+				err1 := os.WriteFile("system_prompt.txt_template", []byte(systemPromptTemplate), 0644)
+				err2 := os.WriteFile("chat_history.json_template", []byte(chatHistoryTemplate), 0644)
+				err3 := os.WriteFile("models_config.yaml_template", []byte(modelsConfigTemplate), 0644)
 				if err1 != nil || err2 != nil || err3 != nil {
 					return fmt.Errorf("生成模板文件失败: %v, %v, %v", err1, err2, err3)
 				} else {
@@ -149,8 +149,7 @@ func main() {
 func doChat() {
 	systemPrompt, err := readSystemPrompt()
 	if err != nil {
-		fmt.Println("读取系统提示词失败:", err)
-		return
+		fmt.Println("未读取到系统提示词，请求中将不会添加。如需使用系统提示词，可通过 system_prompt.txt 文件设置。")
 	}
 
 	chatHistory, err := readChatHistory()
