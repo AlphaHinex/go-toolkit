@@ -26,7 +26,7 @@ func main() {
 	app := &cli.App{
 		Name:    "mdnice",
 		Usage:   "Upload pictures to mdnice",
-		Version: "v2.3.1",
+		Version: "v2.4.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
