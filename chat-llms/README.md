@@ -6,6 +6,7 @@ Chat with LLMs
 用法
 ----
 
+0. 在 [Releases](https://github.com/AlphaHinex/go-toolkit/releases) 页面下载对应平台的二进制文件。
 1. 生成配置文件模板
 ```bash
 ./chat-llms -t 
@@ -25,6 +26,7 @@ Chat with LLMs
   enabled: true
 ```
 可配置多个模型，不同模型之间并行调用，单个模型不同温度等串行调用。
+
 3. 执行对话，等待结果生成
 ```bash
 ./chat-llms
