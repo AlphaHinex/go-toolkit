@@ -295,6 +295,11 @@ func readSystemPrompt() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("读取系统提示词失败: %v", err)
 	}
+	fileName := fmt.Sprintf("%s/system_prompt.txt", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return "", fmt.Errorf("备份系统提示词文件失败: %v", err)
+	}
 	return string(content), nil
 }
 
@@ -308,6 +313,11 @@ func readChatHistory() ([]ChatMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析对话记录失败: %v", err)
 	}
+	fileName := fmt.Sprintf("%s/chat_history.json", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("备份对话历史文件失败: %v", err)
+	}
 	return messages, nil
 }
 
@@ -320,6 +330,11 @@ func readModelConfig() (*Config, error) {
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
 		return nil, fmt.Errorf("解析模型配置失败: %v", err)
+	}
+	fileName := fmt.Sprintf("%s/models_config.yaml", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("备份模型配置文件失败: %v", err)
 	}
 	return &config, nil
 }
