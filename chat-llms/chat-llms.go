@@ -205,7 +205,9 @@ func doChat() {
 
 func callAPI(id string, model ModelConfig, temperature float64, isStream bool, systemPrompt string, chatHistory []ChatMessage, idx int, outputFolder string) error {
 	messages := make([]Message, 0)
-	messages = append(messages, Message{Role: "system", Content: systemPrompt})
+	if len(systemPrompt) > 0 {
+		messages = append(messages, Message{Role: "system", Content: systemPrompt})
+	}
 	for _, msg := range chatHistory {
 		messages = append(messages, Message{Role: msg.Role, Content: msg.Content})
 	}
