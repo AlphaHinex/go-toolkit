@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
@@ -224,6 +225,7 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 		return fmt.Errorf("序列化请求体失败: %v", err)
 	}
 
+	start := time.Now()
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -275,13 +277,13 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 			content = apiResp.Choices[0].Message.Content
 		}
 	}
-
+	elapsed := time.Since(start).Milliseconds()
 	suffix := ""
 	if isStream {
 		suffix = "_stream"
 	}
 	fileName := fmt.Sprintf("%s/%s_%v%s_%d.txt", outputFolder, id, temperature, suffix, idx)
-	err = os.WriteFile(fileName, []byte(fmt.Sprintf("%s\r\n\r\n%s", fileName, content)), 0644)
+	err = os.WriteFile(fileName, []byte(fmt.Sprintf("%s\t%dms\r\n\r\n%s", fileName, elapsed, content)), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件失败: %v", err)
 	}
