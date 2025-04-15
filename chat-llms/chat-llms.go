@@ -62,7 +62,7 @@ var modelsConfigFilePath = ""
 var systemPromptFilePath = ""
 var chatHistoryFilePath = ""
 var repeatTimes = 0
-var concurrency = 0
+var parallel = 0
 var outputFolder = ""
 
 func main() {
@@ -114,9 +114,9 @@ func main() {
 				Required: false,
 			},
 			&cli.IntFlag{
-				Name:     "concurrency",
-				Aliases:  []string{"c"},
-				Usage:    "Concurrency of chat request, default is 1.",
+				Name:     "parallel",
+				Aliases:  []string{"p"},
+				Usage:    "Parallel of chat request, default is 1.",
 				Value:    1,
 				Required: false,
 			},
@@ -127,7 +127,7 @@ func main() {
 			systemPromptFilePath = cCtx.String("system-prompt")
 			chatHistoryFilePath = cCtx.String("chat-history")
 			repeatTimes = cCtx.Int("repeat")
-			concurrency = cCtx.Int("concurrency")
+			parallel = cCtx.Int("parallel")
 			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
@@ -190,7 +190,7 @@ func doChat() {
 		go func(id string, m ModelConfig) {
 			defer wg.Done()
 			var wgTemp sync.WaitGroup
-			sem := make(chan struct{}, concurrency) // concurrency 指定并发数
+			sem := make(chan struct{}, parallel) // parallel 指定并发数
 
 			for _, temp := range m.Temperatures {
 				for i := 0; i < repeatTimes; i++ {
