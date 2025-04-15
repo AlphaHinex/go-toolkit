@@ -62,6 +62,7 @@ var modelsConfigFilePath = ""
 var systemPromptFilePath = ""
 var chatHistoryFilePath = ""
 var repeatTimes = 0
+var concurrency = 0
 var outputFolder = ""
 
 func main() {
@@ -112,6 +113,13 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
+			&cli.IntFlag{
+				Name:     "concurrency",
+				Aliases:  []string{"c"},
+				Usage:    "Concurrency of chat request, default is 1.",
+				Value:    1,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			needTemplates := cCtx.Bool("templates")
@@ -119,6 +127,7 @@ func main() {
 			systemPromptFilePath = cCtx.String("system-prompt")
 			chatHistoryFilePath = cCtx.String("chat-history")
 			repeatTimes = cCtx.Int("repeat")
+			concurrency = cCtx.Int("concurrency")
 			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
@@ -180,22 +189,33 @@ func doChat() {
 		wg.Add(1)
 		go func(id string, m ModelConfig) {
 			defer wg.Done()
+			var wgTemp sync.WaitGroup
+			sem := make(chan struct{}, concurrency) // concurrency 指定并发数
+
 			for _, temp := range m.Temperatures {
 				for i := 0; i < repeatTimes; i++ {
-					fmt.Printf("调用模型 %s 温度 %.2f 非流式接口第 %d 次……\n", id, temp, i+1)
-					// 调用普通接口
-					err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i, outputFolder)
-					if err != nil {
-						fmt.Printf("调用模型 %s 温度 %.2f 非流式接口失败: %v\n", id, temp, err)
-					}
-					fmt.Printf("调用模型 %s 温度 %.2f 流式接口第 %d 次……\n", id, temp, i+1)
-					// 调用流式接口
-					err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i, outputFolder)
-					if err != nil {
-						fmt.Printf("调用模型 %s 温度 %.2f 流式接口失败: %v\n", id, temp, err)
-					}
+					wgTemp.Add(1)
+					sem <- struct{}{} // 获取信号量
+					go func(temp float64, i int) {
+						defer wgTemp.Done()
+						defer func() { <-sem }() // 释放信号量
+
+						fmt.Printf("调用模型 %s 温度 %.2f 非流式接口第 %d 次……\n", id, temp, i+1)
+						// 调用普通接口
+						err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i, outputFolder)
+						if err != nil {
+							fmt.Printf("调用模型 %s 温度 %.2f 非流式接口失败: %v\n", id, temp, err)
+						}
+						fmt.Printf("调用模型 %s 温度 %.2f 流式接口第 %d 次……\n", id, temp, i+1)
+						// 调用流式接口
+						err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i, outputFolder)
+						if err != nil {
+							fmt.Printf("调用模型 %s 温度 %.2f 流式接口失败: %v\n", id, temp, err)
+						}
+					}(temp, i)
 				}
 			}
+			wgTemp.Wait()
 		}(id, model)
 	}
 
