@@ -73,7 +73,7 @@ func main() {
 				Name:     "parallel",
 				Aliases:  []string{"p"},
 				Usage:    "Parallel of chat request, default is 1.",
-				Value:    1,
+				Value:    2,
 				Required: false,
 			},
 		},
@@ -138,16 +138,18 @@ func doEvaluate() {
 
 	// 定义 channel
 	results := make(chan string)
+	// 定义一个带缓冲的 channel 作为信号量
+	semaphore := make(chan struct{}, parallel) // parallel 是并发限制数量
 
-	// 启动 goroutine
 	var wg sync.WaitGroup
-	//sem := make(chan struct{}, parallel) // parallel 指定并发数
 	for _, record := range qa[1:] { // 跳过表头
 		wg.Add(1)
-		//sem <- struct{}{} // 获取信号量
 		go func(record []string) {
 			defer wg.Done()
-			//defer func() { <-sem }() // 释放信号量
+
+			// 占用一个并发槽
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }() // 释放并发槽
 
 			// 获取问题和标准答案
 			question := record[qIndex]
