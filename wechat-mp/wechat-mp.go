@@ -21,7 +21,7 @@ func main() {
 	app := &cli.App{
 		Name:    "wechat-mp",
 		Usage:   "Get statistic info of wechat mp",
-		Version: "v2.4.0",
+		Version: "v2.4.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "cookie",
