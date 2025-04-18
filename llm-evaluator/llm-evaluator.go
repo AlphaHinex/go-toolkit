@@ -130,8 +130,8 @@ func doEvaluate() {
 			sIndex = i
 		}
 	}
-	if qIndex == 0 || aIndex == 0 || sIndex == 0 {
-		fmt.Println("输入文件格式错误，必须包含 q、a 和 s 列")
+	if qIndex == 0 || aIndex == 0 {
+		fmt.Println("输入文件格式错误，必须包含 q 和 a 列")
 		return
 	}
 
@@ -156,7 +156,6 @@ func doEvaluate() {
 			// 获取问题和标准答案
 			question := record[qIndex]
 			expectedAnswer := record[aIndex]
-			evaluateStandard := record[sIndex]
 			// 调用候选模型作答
 			answer, err := callChatAPI(candidateModel, true, question)
 			answer = cleanThinkOfDeepSeek(answer)
@@ -165,10 +164,10 @@ func doEvaluate() {
 				return
 			}
 
-			score := "-2"
+			score := ""
 			scoreWithReason := ""
-			if evaluateStandard == "=" {
-				// 判断 answer 与 expectedAnswer 是否相等
+			if sIndex > 0 && record[sIndex] == "=" {
+				// 判断 answer 与 expectedAnswer 是否完全一致
 				if strings.TrimSpace(answer) == strings.TrimSpace(expectedAnswer) {
 					score = "1"
 					scoreWithReason = "与标准答案安全一致"
@@ -225,7 +224,7 @@ func toOneLine(answer string) interface{} {
 }
 
 func getEvaluatePrompt(question string, answer string, expectedAnswer string) string {
-	return fmt.Sprintf("请根据问题和标准答案，评估回答内容是否正确。正确返回`1`，错误返回`0`，不确定返回`-1`。\n问题: %s\n标准答案: %s\n回答: %s", question, expectedAnswer, answer)
+	return fmt.Sprintf("请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别。无区别返回`1`，有区别返回`0`，不确定返回`-1`。\n问题: %s\n标准答案: %s\n回答: %s", question, expectedAnswer, answer)
 }
 
 func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, error) {
