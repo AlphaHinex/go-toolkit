@@ -155,14 +155,14 @@ func doEvaluate() {
 			question := record[qIndex]
 			expectedAnswer := record[aIndex]
 			// 调用候选模型作答
-			answer, err := callChatAPI(candidateModel, false, question)
+			answer, err := callChatAPI(candidateModel, true, question)
 			if err != nil {
 				fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
 				return
 			}
 
 			// 调用评估模型
-			score, err := callChatAPI(evaluatorModel, false, getEvaluatePrompt(question, answer, expectedAnswer))
+			score, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer))
 			if err != nil {
 				fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
 				return
@@ -243,7 +243,6 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, e
 
 	start := time.Now() // 记录开始时间
 	resp, err := client.Do(req)
-	duration := time.Since(start) // 计算调用时长
 	if err != nil {
 		return "", fmt.Errorf("发送请求失败: %v", err)
 	}
@@ -258,6 +257,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, e
 	if isStream {
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
+			fmt.Print(".")
 			line := scanner.Text()
 			if strings.HasPrefix(line, "data: ") {
 				jsonStr := strings.TrimPrefix(line, "data: ")
@@ -285,7 +285,9 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, e
 			content = apiResp.Choices[0].Message.Content
 		}
 	}
-	fmt.Printf("调用耗时 %v(%s~) \n", duration, start)
+	duration := time.Since(start) // 计算调用时长
+	fmt.Printf("\n模型输出：\n%s\n", content)
+	fmt.Printf("\n调用耗时 %v (%s~) \n", duration, start)
 	return cleanThinkOfDeepSeek(content), nil
 }
 
