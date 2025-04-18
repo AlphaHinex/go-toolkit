@@ -73,7 +73,7 @@ func main() {
 				Name:     "parallel",
 				Aliases:  []string{"p"},
 				Usage:    "Parallel of chat request, default is 1.",
-				Value:    2,
+				Value:    1,
 				Required: false,
 			},
 		},
@@ -120,16 +120,18 @@ func doEvaluate() {
 		return
 	}
 	// 从 qa[0] 中查找 q 列索引
-	var qIndex, aIndex int
+	var qIndex, aIndex, sIndex int
 	for i, header := range qa[0] {
 		if strings.ToLower(header) == "q" {
 			qIndex = i
 		} else if strings.ToLower(header) == "a" {
 			aIndex = i
+		} else if strings.ToLower(header) == "s" {
+			sIndex = i
 		}
 	}
-	if qIndex == 0 && aIndex == 0 {
-		fmt.Println("输入文件格式错误，必须包含 q 和 a 列")
+	if qIndex == 0 || aIndex == 0 || sIndex == 0 {
+		fmt.Println("输入文件格式错误，必须包含 q、a 和 s 列")
 		return
 	}
 
@@ -154,20 +156,36 @@ func doEvaluate() {
 			// 获取问题和标准答案
 			question := record[qIndex]
 			expectedAnswer := record[aIndex]
+			evaluateStandard := record[sIndex]
 			// 调用候选模型作答
 			answer, err := callChatAPI(candidateModel, true, question)
+			answer = cleanThinkOfDeepSeek(answer)
 			if err != nil {
 				fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
 				return
 			}
 
-			// 调用评估模型
-			score, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer))
-			if err != nil {
-				fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
-				return
+			score := "-2"
+			scoreWithReason := ""
+			if evaluateStandard == "=" {
+				// 判断 answer 与 expectedAnswer 是否相等
+				if strings.TrimSpace(answer) == strings.TrimSpace(expectedAnswer) {
+					score = "1"
+					scoreWithReason = "与标准答案安全一致"
+				} else {
+					score = "0"
+					scoreWithReason = "与标准答案不完全一致"
+				}
+			} else {
+				// 调用评估模型
+				scoreWithReason, err = callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer))
+				score = cleanThinkOfDeepSeek(scoreWithReason)
+				if err != nil {
+					fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
+					return
+				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s", strings.Join(record, ","), toOneLine(answer), score)
+			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(record, ","), toOneLine(answer), toOneLine(score), toOneLine(scoreWithReason))
 			fmt.Printf("放入 channel\n")
 		}(record)
 	}
@@ -187,7 +205,7 @@ func doEvaluate() {
 	defer outputFile.Close()
 
 	writer := bufio.NewWriter(outputFile)
-	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score\n", strings.Join(qa[0], ",")))
+	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason\n", strings.Join(qa[0], ",")))
 	if err != nil {
 		log.Fatalf("写入文件失败: %v", err)
 	}
@@ -216,6 +234,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, e
 	messages = append(messages, Message{Role: "user", Content: userPrompt})
 
 	body := map[string]interface{}{
+		"user":        "llm-evaluator",
 		"messages":    messages,
 		"model":       model.Model,
 		"temperature": model.Temperature,
@@ -288,7 +307,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, e
 	duration := time.Since(start) // 计算调用时长
 	fmt.Printf("\n模型输出：\n%s\n", content)
 	fmt.Printf("\n调用耗时 %v (%s~) \n", duration, start)
-	return cleanThinkOfDeepSeek(content), nil
+	return content, nil
 }
 
 func cleanThinkOfDeepSeek(content string) string {
