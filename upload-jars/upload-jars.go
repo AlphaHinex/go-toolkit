@@ -57,7 +57,7 @@ http://username:pwd@host:port/path/to/repository
 其中用户名、密码如包含特殊字符，需进行 URL 转义。
 
 源码可见：https://github.com/AlphaHinex/go-toolkit/tree/main/upload-jars`,
-		Version: "v2.4.0",
+		Version: "v2.4.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "i",
