@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
@@ -61,13 +62,14 @@ var modelsConfigFilePath = ""
 var systemPromptFilePath = ""
 var chatHistoryFilePath = ""
 var repeatTimes = 0
+var parallel = 0
 var outputFolder = ""
 
 func main() {
 	app := &cli.App{
 		Name:    "chat-llms",
 		Usage:   "Chat with multi-LLMs at the same time.",
-		Version: "v2.4.0",
+		Version: "v2.4.1",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:     "repeat",
@@ -111,6 +113,13 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
+			&cli.IntFlag{
+				Name:     "parallel",
+				Aliases:  []string{"p"},
+				Usage:    "Parallel of chat request, default is 1.",
+				Value:    1,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			needTemplates := cCtx.Bool("templates")
@@ -118,6 +127,7 @@ func main() {
 			systemPromptFilePath = cCtx.String("system-prompt")
 			chatHistoryFilePath = cCtx.String("chat-history")
 			repeatTimes = cCtx.Int("repeat")
+			parallel = cCtx.Int("parallel")
 			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
@@ -179,22 +189,33 @@ func doChat() {
 		wg.Add(1)
 		go func(id string, m ModelConfig) {
 			defer wg.Done()
+			var wgTemp sync.WaitGroup
+			sem := make(chan struct{}, parallel) // parallel 指定并发数
+
 			for _, temp := range m.Temperatures {
 				for i := 0; i < repeatTimes; i++ {
-					fmt.Printf("调用模型 %s 温度 %.2f 非流式接口第 %d 次……\n", id, temp, i+1)
-					// 调用普通接口
-					err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i, outputFolder)
-					if err != nil {
-						fmt.Printf("调用模型 %s 温度 %.2f 非流式接口失败: %v\n", id, temp, err)
-					}
-					fmt.Printf("调用模型 %s 温度 %.2f 流式接口第 %d 次……\n", id, temp, i+1)
-					// 调用流式接口
-					err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i, outputFolder)
-					if err != nil {
-						fmt.Printf("调用模型 %s 温度 %.2f 流式接口失败: %v\n", id, temp, err)
-					}
+					wgTemp.Add(1)
+					sem <- struct{}{} // 获取信号量
+					go func(temp float64, i int) {
+						defer wgTemp.Done()
+						defer func() { <-sem }() // 释放信号量
+
+						fmt.Printf("调用模型 %s 温度 %.2f 非流式接口第 %d 次……\n", id, temp, i+1)
+						// 调用普通接口
+						err := callAPI(id, m, temp, false, systemPrompt, chatHistory, i, outputFolder)
+						if err != nil {
+							fmt.Printf("调用模型 %s 温度 %.2f 非流式接口失败: %v\n", id, temp, err)
+						}
+						fmt.Printf("调用模型 %s 温度 %.2f 流式接口第 %d 次……\n", id, temp, i+1)
+						// 调用流式接口
+						err = callAPI(id, m, temp, true, systemPrompt, chatHistory, i, outputFolder)
+						if err != nil {
+							fmt.Printf("调用模型 %s 温度 %.2f 流式接口失败: %v\n", id, temp, err)
+						}
+					}(temp, i)
 				}
 			}
+			wgTemp.Wait()
 		}(id, model)
 	}
 
@@ -204,7 +225,9 @@ func doChat() {
 
 func callAPI(id string, model ModelConfig, temperature float64, isStream bool, systemPrompt string, chatHistory []ChatMessage, idx int, outputFolder string) error {
 	messages := make([]Message, 0)
-	messages = append(messages, Message{Role: "system", Content: systemPrompt})
+	if len(systemPrompt) > 0 {
+		messages = append(messages, Message{Role: "system", Content: systemPrompt})
+	}
 	for _, msg := range chatHistory {
 		messages = append(messages, Message{Role: msg.Role, Content: msg.Content})
 	}
@@ -224,6 +247,7 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 		return fmt.Errorf("序列化请求体失败: %v", err)
 	}
 
+	start := time.Now()
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -275,13 +299,13 @@ func callAPI(id string, model ModelConfig, temperature float64, isStream bool, s
 			content = apiResp.Choices[0].Message.Content
 		}
 	}
-
+	elapsed := time.Since(start).Milliseconds()
 	suffix := ""
 	if isStream {
 		suffix = "_stream"
 	}
 	fileName := fmt.Sprintf("%s/%s_%v%s_%d.txt", outputFolder, id, temperature, suffix, idx)
-	err = os.WriteFile(fileName, []byte(fmt.Sprintf("%s\r\n\r\n%s", fileName, content)), 0644)
+	err = os.WriteFile(fileName, []byte(fmt.Sprintf("%s\t%dms\r\n\r\n%s", fileName, elapsed, content)), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件失败: %v", err)
 	}
@@ -294,6 +318,11 @@ func readSystemPrompt() (string, error) {
 	content, err := os.ReadFile(systemPromptFilePath)
 	if err != nil {
 		return "", fmt.Errorf("读取系统提示词失败: %v", err)
+	}
+	fileName := fmt.Sprintf("%s/system_prompt.txt", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return "", fmt.Errorf("备份系统提示词文件失败: %v", err)
 	}
 	return string(content), nil
 }
@@ -308,6 +337,11 @@ func readChatHistory() ([]ChatMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析对话记录失败: %v", err)
 	}
+	fileName := fmt.Sprintf("%s/chat_history.json", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("备份对话历史文件失败: %v", err)
+	}
 	return messages, nil
 }
 
@@ -320,6 +354,11 @@ func readModelConfig() (*Config, error) {
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
 		return nil, fmt.Errorf("解析模型配置失败: %v", err)
+	}
+	fileName := fmt.Sprintf("%s/models_config.yaml", outputFolder)
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("备份模型配置文件失败: %v", err)
 	}
 	return &config, nil
 }
