@@ -130,7 +130,7 @@ func doEvaluate() {
 			sIndex = i
 		}
 	}
-	if qIndex == 0 || aIndex == 0 {
+	if qIndex < 0 || aIndex < 0 {
 		fmt.Println("输入文件格式错误，必须包含 q 和 a 列")
 		return
 	}
