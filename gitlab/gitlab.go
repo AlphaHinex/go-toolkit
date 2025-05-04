@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
@@ -22,6 +24,8 @@ var host string
 var token string
 
 const pageSize = 99
+const maxRetries = 3
+const timeoutDuration = 10 * time.Second
 
 func main() {
 	app := &cli.App{
@@ -312,8 +316,6 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
     } 
 }
 `)
-
-	client := &http.Client{}
 	req, err := http.NewRequest("POST", url, payload)
 
 	if err != nil {
@@ -322,7 +324,7 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
-	res, err := client.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -337,6 +339,34 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	log.Printf("Response from lark: %s\r\n", string(body))
 }
 
+func doRequestWithRetry(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	for i := 0; i < maxRetries; i++ {
+		// 设置超时上下文
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+		defer cancel()
+
+		// 将上下文绑定到请求
+		req = req.WithContext(ctx)
+		client := &http.Client{}
+		resp, err = client.Do(req)
+
+		// 如果请求成功，返回响应
+		if err == nil {
+			return resp, nil
+		}
+
+		// 记录失败日志并等待重试
+		log.Printf("Request failed (attempt %d/%d): %s", i+1, maxRetries, err)
+		time.Sleep(2 * time.Second) // 可根据需要实现指数退避
+	}
+
+	// 如果所有重试都失败，返回错误
+	return nil, errors.New("all retries failed")
+}
+
 type project struct {
 	Id     int
 	Name   string
@@ -347,14 +377,13 @@ func getProjectInfo(projectId int) (project, error) {
 	urlStr := host + "/api/v4/projects/" + strconv.Itoa(projectId) + "?statistics=true"
 	method := "GET"
 
-	client := &http.Client{}
 	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
 		return project{}, err
 	}
 	req.Header.Add("PRIVATE-TOKEN", token)
 
-	res, err := client.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		return project{}, err
 	}
@@ -528,7 +557,6 @@ func getAllPageData(url string) ([][]byte, error) {
 
 func getDataByPage(url, page string) ([]byte, string, error) {
 	method := "GET"
-	client := &http.Client{}
 
 	req, err := http.NewRequest(method, fmt.Sprintf("%spage=%s&per_page=%d", url, page, pageSize), nil)
 
@@ -536,7 +564,7 @@ func getDataByPage(url, page string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	req.Header.Add("PRIVATE-TOKEN", token)
-	res, err := client.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		return nil, "", err
 	}
