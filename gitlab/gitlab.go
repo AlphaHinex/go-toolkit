@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +24,6 @@ var token string
 
 const pageSize = 99
 const maxRetries = 3
-const timeoutDuration = 10 * time.Second
 
 func main() {
 	app := &cli.App{
@@ -344,13 +342,9 @@ func doRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
-		// 设置超时上下文
-		ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
-		defer cancel()
-
-		// 将上下文绑定到请求
-		req = req.WithContext(ctx)
-		client := &http.Client{}
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
 		resp, err = client.Do(req)
 
 		// 如果请求成功，返回响应
@@ -360,7 +354,7 @@ func doRequestWithRetry(req *http.Request) (*http.Response, error) {
 
 		// 记录失败日志并等待重试
 		log.Printf("Request failed (attempt %d/%d): %s", i+1, maxRetries, err)
-		time.Sleep(2 * time.Second) // 可根据需要实现指数退避
+		time.Sleep(5 * time.Duration(i+1) * time.Second)
 	}
 
 	// 如果所有重试都失败，返回错误
