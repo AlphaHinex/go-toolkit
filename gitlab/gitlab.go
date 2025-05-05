@@ -341,10 +341,10 @@ func doRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	for i := 0; i < maxRetries; i++ {
-		client := &http.Client{
-			Timeout: 10 * time.Second,
-		}
 		resp, err = client.Do(req)
 
 		// 如果请求成功，返回响应
