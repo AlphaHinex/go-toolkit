@@ -169,18 +169,18 @@ func doEvaluate() {
 				}
 			}
 
-			var chatHistory []ChatMessage
+			var chatHistory []Message
 			for _, q := range questions {
 				// 调用候选模型作答
-				answer, err := callChatAPI(candidateModel, true, q)
+				answer, err := callChatAPI(candidateModel, true, q, chatHistory)
 				answer = cleanThinkOfDeepSeek(answer)
 				if err != nil {
 					fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
 				}
-				chatHistory = append(chatHistory, ChatMessage{
+				chatHistory = append(chatHistory, Message{
 					Role:    "user",
 					Content: q,
-				}, ChatMessage{
+				}, Message{
 					Role:    "assistant",
 					Content: answer,
 				})
@@ -212,7 +212,7 @@ func doEvaluate() {
 				}
 			} else {
 				// 调用评估模型
-				scoreWithReason, err = callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer))
+				scoreWithReason, err = callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
 				score = cleanThinkOfDeepSeek(scoreWithReason)
 				if err != nil {
 					fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
@@ -270,10 +270,10 @@ func getEvaluatePrompt(question string, answer string, expectedAnswer string) st
 	return fmt.Sprintf("请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别。无区别返回`1`，有区别返回`0`，不确定返回`-1`。\n问题: %s\n标准答案: %s\n回答: %s", question, expectedAnswer, answer)
 }
 
-func callChatAPI(model ModelConfig, isStream bool, userPrompt string) (string, error) {
+func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, error) {
 	fmt.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
-	messages := make([]Message, 0)
-	messages = append(messages, Message{Role: "user", Content: userPrompt})
+	messages := make([]Message, len(history)+1)
+	messages = append(history, Message{Role: "user", Content: userPrompt})
 
 	body := map[string]interface{}{
 		"user":        "llm-evaluator",
@@ -397,18 +397,13 @@ func readInputCSV() ([][]string, error) {
 	return records, nil
 }
 
-func parseChatMessages(s string) ([]ChatMessage, error) {
-	var messages []ChatMessage
+func parseChatMessages(s string) ([]Message, error) {
+	var messages []Message
 	err := json.Unmarshal([]byte(s), &messages)
 	if err != nil {
 		return nil, err
 	}
 	return messages, nil
-}
-
-type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
 }
 
 type ModelConfig struct {
