@@ -185,7 +185,6 @@ func doEvaluate() {
 				}
 			}
 			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(record, ","), toOneLine(answer), toOneLine(score), toOneLine(scoreWithReason))
-			fmt.Printf("放入 channel\n")
 		}(record)
 	}
 
