@@ -156,12 +156,47 @@ func doEvaluate() {
 			// 获取问题和标准答案
 			question := record[qIndex]
 			expectedAnswer := record[aIndex]
-			// 调用候选模型作答
-			answer, err := callChatAPI(candidateModel, true, question)
-			answer = cleanThinkOfDeepSeek(answer)
+
+			var questions []string
+			chatMessages, err := parseChatMessages(question)
 			if err != nil {
-				fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
-				return
+				questions = append(questions, question)
+			} else {
+				for _, message := range chatMessages {
+					if message.Role == "user" {
+						questions = append(questions, message.Content)
+					}
+				}
+			}
+
+			var chatHistory []ChatMessage
+			for _, q := range questions {
+				// 调用候选模型作答
+				answer, err := callChatAPI(candidateModel, true, q)
+				answer = cleanThinkOfDeepSeek(answer)
+				if err != nil {
+					fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
+				}
+				chatHistory = append(chatHistory, ChatMessage{
+					Role:    "user",
+					Content: q,
+				}, ChatMessage{
+					Role:    "assistant",
+					Content: answer,
+				})
+			}
+
+			var answer string
+			if len(chatHistory) == 2 {
+				answer = chatHistory[1].Content
+			} else {
+				// 将 chatHistory 转为 json 字符串
+				chatHistoryJSON, err := json.Marshal(chatHistory)
+				if err != nil {
+					fmt.Printf("序列化聊天记录失败: %v\n", err)
+					return
+				}
+				answer = string(chatHistoryJSON)
 			}
 
 			score := ""
@@ -184,7 +219,7 @@ func doEvaluate() {
 					return
 				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(record, ","), toOneLine(answer), toOneLine(score), toOneLine(scoreWithReason))
+			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(scoreWithReason))
 		}(record)
 	}
 
@@ -217,9 +252,18 @@ func doEvaluate() {
 	fmt.Printf("结果已写入文件: %s\n", outputFilePath)
 }
 
-func toOneLine(answer string) interface{} {
-	// 将回答内容转换为单行
-	return strings.ReplaceAll(strings.TrimSpace(answer), "\n", " ")
+func toOneCells(contents []string) []string {
+	for i, content := range contents {
+		contents[i] = toOneCell(content)
+	}
+	return contents
+}
+
+func toOneCell(content string) string {
+	if strings.Contains(content, ",") || strings.Contains(content, "\n") {
+		content = fmt.Sprintf("\"%s\"", strings.ReplaceAll(strings.TrimSpace(content), "\"", "\"\""))
+	}
+	return content
 }
 
 func getEvaluatePrompt(question string, answer string, expectedAnswer string) string {
@@ -351,6 +395,15 @@ func readInputCSV() ([][]string, error) {
 		return nil, err
 	}
 	return records, nil
+}
+
+func parseChatMessages(s string) ([]ChatMessage, error) {
+	var messages []ChatMessage
+	err := json.Unmarshal([]byte(s), &messages)
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
 }
 
 type ChatMessage struct {
