@@ -200,26 +200,31 @@ func doEvaluate() {
 			}
 
 			score := ""
-			scoreWithReason := ""
+			reason := ""
 			if sIndex > 0 && record[sIndex] == "=" {
 				// 判断 answer 与 expectedAnswer 是否完全一致
 				if strings.TrimSpace(answer) == strings.TrimSpace(expectedAnswer) {
 					score = "1"
-					scoreWithReason = "与标准答案安全一致"
+					reason = "与标准答案安全一致"
 				} else {
 					score = "0"
-					scoreWithReason = "与标准答案不完全一致"
+					reason = "与标准答案不完全一致"
 				}
 			} else {
 				// 调用评估模型
-				scoreWithReason, err = callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
-				score = cleanThinkOfDeepSeek(scoreWithReason)
+				scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
+				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
+				// 将 scoreWithReason 转成 json
+				var result map[string]string
+				err = json.Unmarshal([]byte(scoreWithReason), &result)
+				score = result["score"]
+				reason = result["reason"]
 				if err != nil {
 					fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
 					return
 				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(scoreWithReason))
+			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
 		}(record)
 	}
 
@@ -267,7 +272,22 @@ func toOneCell(content string) string {
 }
 
 func getEvaluatePrompt(question string, answer string, expectedAnswer string) string {
-	return fmt.Sprintf("请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别。无区别返回`1`，有区别返回`0`，不确定返回`-1`。\n问题: %s\n标准答案: %s\n回答: %s", question, expectedAnswer, answer)
+	return fmt.Sprintf(`## 目标
+
+请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别，并给出评估依据。以 json 结构返回评估结果，score 代表得分，reason 代表原因。
+无区别 score 为 1，有区别为 0，不确定为 -1。
+
+## 返回结构示例
+
+{"score":"1", "reason":"与标准答案一致"}
+
+## 评估内容 
+
+### 问题: %s
+
+### 标准答案: %s
+
+### 回答: %s`, question, expectedAnswer, answer)
 }
 
 func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, error) {
