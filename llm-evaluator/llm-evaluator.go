@@ -214,6 +214,7 @@ func doEvaluate() {
 				// 调用评估模型
 				scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
+				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
 				var result map[string]string
 				err = json.Unmarshal([]byte(scoreWithReason), &result)
@@ -279,7 +280,7 @@ func getEvaluatePrompt(question string, answer string, expectedAnswer string) st
 
 ## 返回结构示例
 
-{"score":"1", "reason":"与标准答案一致"}
+{"score":"1", "reason":"给出评分依据"}
 
 ## 评估内容 
 
@@ -379,6 +380,17 @@ func cleanThinkOfDeepSeek(content string) string {
 
 	// 替换匹配的内容
 	return strings.TrimSpace(re.ReplaceAllString(content, ""))
+}
+
+func cleanMarkdownJsonSymbolIfNeeded(content string) string {
+	idx := strings.Index(content, "```json")
+	if idx > -1 {
+		content = content[idx+7:]
+	}
+	if strings.HasSuffix(content, "```") {
+		content = content[:len(content)-3]
+	}
+	return content
 }
 
 func readModelConfig() (*Config, error) {
