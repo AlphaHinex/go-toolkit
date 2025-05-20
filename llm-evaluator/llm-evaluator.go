@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -18,20 +19,27 @@ import (
 	"time"
 )
 
-var modelsConfigTemplate = `candidate:
-  endpoint: https://api.openai.com
-  api-key: sk-xxxxxxxx
-  model: text-davinci-003
-  temperature: 0
-evaluator:
-  endpoint: https://api.openai.com
-  api-key: sk-xxxxxxxx
-  model: GPT-4o
-  temperature: 0
+var configsTemplate = `
+model:
+  candidate:
+    endpoint: https://api.openai.com
+    api-key: sk-xxxxxxxx
+    model: text-davinci-003
+    temperature: 0
+  evaluator:
+    endpoint: https://api.openai.com
+    api-key: sk-xxxxxxxx
+    model: GPT-4o
+    temperature: 0
+langfuse:
+  enable: false
+  host: https://cloud.langfuse.com
+  public-key: pk-lf-xxx
+  secret-key: sk-lf-xxx
 `
 
 var inputFilePath = ""
-var modelsConfigFilePath = ""
+var configsFilePath = ""
 var parallel = 0
 var outputFolder = ""
 
@@ -56,16 +64,16 @@ func main() {
 				Required: false,
 			},
 			&cli.StringFlag{
-				Name:     "models-config",
+				Name:     "configs",
 				Aliases:  []string{"c"},
-				Usage:    "LLM models config file path, default is ./models_config.yaml .",
-				Value:    "./models_config.yaml",
+				Usage:    "LLM Evaluator configs file path.",
+				Value:    "./configs.yaml",
 				Required: false,
 			},
 			&cli.BoolFlag{
 				Name:     "templates",
 				Aliases:  []string{"t"},
-				Usage:    "Generate template files of models_config.yaml in current path.",
+				Usage:    "Generate template files of configs.yaml in current path.",
 				Value:    false,
 				Required: false,
 			},
@@ -80,12 +88,12 @@ func main() {
 		Action: func(cCtx *cli.Context) error {
 			inputFilePath = cCtx.String("input-file")
 			needTemplates := cCtx.Bool("templates")
-			modelsConfigFilePath = cCtx.String("models-config")
+			configsFilePath = cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
 			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
-				err := os.WriteFile("models_config.yaml_template", []byte(modelsConfigTemplate), 0644)
+				err := os.WriteFile("configs.yaml_template", []byte(configsTemplate), 0644)
 				if err != nil {
 					return fmt.Errorf("生成模板文件失败: %v", err)
 				} else {
@@ -109,9 +117,9 @@ func main() {
 }
 
 func doEvaluate() {
-	config, err := readModelConfig()
+	configs, err := readConfigs()
 	if err != nil {
-		fmt.Println("读取模型配置失败:", err)
+		fmt.Println("读取配置文件失败:", err)
 		return
 	}
 	qa, err := readInputCSV()
@@ -135,8 +143,8 @@ func doEvaluate() {
 		return
 	}
 
-	candidateModel := config.Models["candidate"]
-	evaluatorModel := config.Models["evaluator"]
+	candidateModel := configs.Model.Candidate
+	evaluatorModel := configs.Model.Evaluator
 
 	// 定义 channel
 	results := make(chan string)
@@ -169,14 +177,16 @@ func doEvaluate() {
 				}
 			}
 
+			// 多轮对话 id 取最后一个
+			var id, answer string
 			var chatHistory []Message
 			for _, q := range questions {
 				// 调用候选模型作答
-				answer, err := callChatAPI(candidateModel, true, q, chatHistory)
-				answer = cleanThinkOfDeepSeek(answer)
+				id, answer, err = callChatAPI(candidateModel, true, q, chatHistory)
 				if err != nil {
 					fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
 				}
+				answer = cleanThinkOfDeepSeek(answer)
 				chatHistory = append(chatHistory, Message{
 					Role:    "user",
 					Content: q,
@@ -186,7 +196,6 @@ func doEvaluate() {
 				})
 			}
 
-			var answer string
 			if len(chatHistory) == 2 {
 				answer = chatHistory[1].Content
 			} else {
@@ -212,7 +221,7 @@ func doEvaluate() {
 				}
 			} else {
 				// 调用评估模型
-				scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
+				_, scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
@@ -226,6 +235,9 @@ func doEvaluate() {
 				}
 			}
 			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
+			if configs.Langfuse.Enable {
+				createLangfuseScore(configs, id, score, question, answer, expectedAnswer, reason)
+			}
 		}(record)
 	}
 
@@ -256,6 +268,47 @@ func doEvaluate() {
 	}
 	writer.Flush()
 	fmt.Printf("结果已写入文件: %s\n", outputFilePath)
+}
+
+func createLangfuseScore(configs *Configs, id string, score string, question string, answer string, expectedAnswer string, reason string) {
+	body := LangfuseScore{
+		TraceId: id,
+		Value:   score,
+		Name:    configs.Langfuse.ScoreName,
+		Metadata: struct {
+			Reason         string `json:"reason"`
+			Answer         string `json:"answer"`
+			Question       string `json:"question"`
+			ExpectedAnswer string `json:"expected_answer"`
+		}{
+			Reason:         reason,
+			Answer:         answer,
+			Question:       question,
+			ExpectedAnswer: expectedAnswer,
+		},
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
+	}
+	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewBuffer(jsonBody))
+	req.SetBasicAuth(configs.Langfuse.PublicKey, configs.Langfuse.SecretKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("创建 Langfuse Score 请求异常 %s", err)
+	}
+	defer resp.Body.Close()
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		// 读取响应体
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("读取创建 Langfuse Score 请求响应体异常 %s", err)
+		}
+		fmt.Printf("调用 Langfuse 失败：%s %s\n", resp.Status, string(body))
+	}
 }
 
 func toOneCells(contents []string) []string {
@@ -291,7 +344,7 @@ func getEvaluatePrompt(question string, answer string, expectedAnswer string) st
 ### 回答: %s`, question, expectedAnswer, answer)
 }
 
-func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, error) {
+func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, error) {
 	fmt.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
 	messages := make([]Message, len(history)+1)
 	messages = append(history, Message{Role: "user", Content: userPrompt})
@@ -309,7 +362,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("序列化请求体失败: %v", err)
+		return "", "", fmt.Errorf("序列化请求体失败: %v", err)
 	}
 
 	client := &http.Client{
@@ -317,7 +370,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %v", err)
+		return "", "", fmt.Errorf("创建请求失败: %v", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
@@ -326,16 +379,16 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	start := time.Now() // 记录开始时间
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("发送请求失败: %v", err)
+		return "", "", fmt.Errorf("发送请求失败: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
-		return "", fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		return "", "", fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
-	var content string
+	var id, content string
 	if isStream {
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
@@ -349,10 +402,11 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 				var apiResp StreamingAPIResponse
 				err := json.Unmarshal([]byte(jsonStr), &apiResp)
 				if err != nil {
-					return "", fmt.Errorf("解析响应失败: %v", err)
+					return "", "", fmt.Errorf("解析响应失败: %v", err)
 				}
 				if len(apiResp.Choices) > 0 {
 					content += apiResp.Choices[0].Delta.Content
+					id = apiResp.Id
 				}
 			}
 		}
@@ -360,16 +414,17 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		var apiResp BlockingAPIResponse
 		err := json.NewDecoder(resp.Body).Decode(&apiResp)
 		if err != nil {
-			return "", fmt.Errorf("解析响应失败: %v", err)
+			return "", "", fmt.Errorf("解析响应失败: %v", err)
 		}
 		if len(apiResp.Choices) > 0 {
 			content = apiResp.Choices[0].Message.Content
+			id = apiResp.Id
 		}
 	}
 	duration := time.Since(start) // 计算调用时长
 	fmt.Printf("\n模型输出：\n%s\n", content)
 	fmt.Printf("\n调用耗时 %v (%s~) \n", duration, start)
-	return content, nil
+	return id, content, nil
 }
 
 func cleanThinkOfDeepSeek(content string) string {
@@ -392,17 +447,17 @@ func cleanMarkdownJsonSymbolIfNeeded(content string) string {
 	return content
 }
 
-func readModelConfig() (*Config, error) {
-	content, err := os.ReadFile(modelsConfigFilePath)
+func readConfigs() (*Configs, error) {
+	content, err := os.ReadFile(configsFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("读取模型配置失败: %v", err)
 	}
-	var config Config
+	var config Configs
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
 		return nil, fmt.Errorf("解析模型配置失败: %v", err)
 	}
-	fileName := fmt.Sprintf("%s/models_config.yaml", outputFolder)
+	fileName := fmt.Sprintf("%s/configs.yaml", outputFolder)
 	err = os.WriteFile(fileName, content, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("备份模型配置文件失败: %v", err)
@@ -444,9 +499,19 @@ type ModelConfig struct {
 	Temperature float64 `yaml:"temperature"`
 }
 
-// Config 表示整个 YAML 文件的结构
-type Config struct {
-	Models map[string]ModelConfig `yaml:",inline"`
+// Configs 表示整个 YAML 文件的结构
+type Configs struct {
+	Model struct {
+		Candidate ModelConfig `yaml:"candidate"`
+		Evaluator ModelConfig `yaml:"evaluator"`
+	} `yaml:"model"`
+	Langfuse struct {
+		Enable    bool   `yaml:"enable"`
+		Host      string `yaml:"host"`
+		PublicKey string `yaml:"public-key"`
+		SecretKey string `yaml:"secret-key"`
+		ScoreName string `yaml:"score-name"`
+	} `yaml:"langfuse"`
 }
 
 // Message 请求消息结构
@@ -473,4 +538,16 @@ type StreamingAPIResponse struct {
 			Content string `json:"content"`
 		} `json:"delta"`
 	} `json:"choices"`
+}
+
+type LangfuseScore struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	TraceId  string `json:"traceId"`
+	Metadata struct {
+		Reason         string `json:"reason"`
+		Answer         string `json:"answer"`
+		Question       string `json:"question"`
+		ExpectedAnswer string `json:"expected_answer"`
+	} `json:"metadata"`
 }
