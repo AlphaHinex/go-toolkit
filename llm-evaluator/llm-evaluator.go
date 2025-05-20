@@ -346,19 +346,18 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 				if jsonStr == "[DONE]" {
 					break
 				}
-				var delta map[string]interface{}
-				err := json.Unmarshal([]byte(jsonStr), &delta)
+				var apiResp StreamingAPIResponse
+				err := json.Unmarshal([]byte(jsonStr), &apiResp)
 				if err != nil {
-					continue
+					return "", fmt.Errorf("解析响应失败: %v", err)
 				}
-				deltaContent, ok := delta["choices"].([]interface{})[0].(map[string]interface{})["delta"].(map[string]interface{})["content"].(string)
-				if ok {
-					content += deltaContent
+				if len(apiResp.Choices) > 0 {
+					content += apiResp.Choices[0].Delta.Content
 				}
 			}
 		}
 	} else {
-		var apiResp APIResponse
+		var apiResp BlockingAPIResponse
 		err := json.NewDecoder(resp.Body).Decode(&apiResp)
 		if err != nil {
 			return "", fmt.Errorf("解析响应失败: %v", err)
@@ -450,15 +449,28 @@ type Config struct {
 	Models map[string]ModelConfig `yaml:",inline"`
 }
 
+// Message 请求消息结构
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type APIResponse struct {
+// BlockingAPIResponse 非流式响应消息结构
+type BlockingAPIResponse struct {
+	Id      string `json:"id"`
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+	} `json:"choices"`
+}
+
+// StreamingAPIResponse 流式响应消息结构
+type StreamingAPIResponse struct {
+	Id      string `json:"id"`
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
 	} `json:"choices"`
 }
