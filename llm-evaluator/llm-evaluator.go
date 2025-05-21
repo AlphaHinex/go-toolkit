@@ -92,6 +92,7 @@ langfuse:
 
 var outputFolder = ""
 var parallel = 0
+var prefix = ""
 
 func main() {
 	app := &cli.App{
@@ -140,6 +141,7 @@ func main() {
 					// 使用默认输出路径
 					outputFolder = "./result"
 				}
+				prefix = fmt.Sprintf("%s/%s_%s_", outputFolder, configs.Model.Candidate.Model, time.Now().Format("20060102150405"))
 				backupConfigsToOutputFolder(configs, outputFolder)
 
 				doEvaluate(configs)
@@ -282,7 +284,7 @@ func doEvaluate(configs *Configs) {
 	}()
 
 	// 将 channel 中的内容写入文件
-	outputFilePath := fmt.Sprintf("%s/evaluate_result_of_%s_%s.csv", outputFolder, configs.Model.Candidate.Model, time.Now().Format("20060102150405"))
+	outputFilePath := fmt.Sprintf("%s_evaluate_result.csv", prefix)
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		log.Fatalf("创建输出文件失败: %v", err)
@@ -425,7 +427,7 @@ func doRequestWithRetry(req *http.Request, client *http.Client, maxRetries int, 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
 			time.Sleep(time.Duration(i) * retryDelay)
-			fmt.Printf("请求失败，重试第 %d 次...\n", i+1)
+			fmt.Printf("请求失败，重试第 %d 次...\n %v \n", i+1, err)
 		}
 	}
 
@@ -471,7 +473,7 @@ func backupConfigsToOutputFolder(configs *Configs, outputFolder string) {
 	if err != nil {
 		log.Panicf("创建输出文件夹失败: %v", err)
 	}
-	fileName := fmt.Sprintf("%s/configs.yaml", outputFolder)
+	fileName := fmt.Sprintf("%s_configs.yaml", prefix)
 	content, err := yaml.Marshal(configs)
 	if err != nil {
 		log.Panicf("序列化模型配置失败: %v", err)
