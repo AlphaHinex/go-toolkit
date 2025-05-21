@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -271,9 +272,16 @@ func doEvaluate() {
 }
 
 func createLangfuseScore(configs *Configs, id string, score string, question string, answer string, expectedAnswer string, reason string) {
+	var value interface{}
+	scoreInt, err := strconv.Atoi(score)
+	if err != nil {
+		value = score
+	} else {
+		value = scoreInt
+	}
 	body := LangfuseScore{
 		TraceId: id,
-		Value:   score,
+		Value:   value,
 		Name:    configs.Langfuse.ScoreName,
 		Metadata: struct {
 			Reason         string `json:"reason"`
@@ -541,9 +549,9 @@ type StreamingAPIResponse struct {
 }
 
 type LangfuseScore struct {
-	Name     string `json:"name"`
-	Value    string `json:"value"`
-	TraceId  string `json:"traceId"`
+	Name     string      `json:"name"`
+	Value    interface{} `json:"value"`
+	TraceId  string      `json:"traceId"`
 	Metadata struct {
 		Reason         string `json:"reason"`
 		Answer         string `json:"answer"`
