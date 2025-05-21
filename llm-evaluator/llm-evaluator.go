@@ -46,23 +46,42 @@ var evaluatorPrompt = `
 `
 
 var configsTemplate = fmt.Sprintf(`
+# 必填
 model:
+  # 运动员
   candidate:
     endpoint: https://api.openai.com
     api-key: sk-xxxxxxxx
     model: text-davinci-003
     temperature: 0
+  # 裁判员
   evaluator:
     endpoint: https://api.openai.com
     api-key: sk-xxxxxxxx
     model: GPT-4o
     temperature: 0
 
+# 必填
+input:
+  file: ./input.csv
+  # 问题列名
+  question: question
+  # 标准答案列名
+  expectedAnswer: expectedAnswer
+  # 实际回答列名
+  answer: answer
+
+# 可使用默认值
+output:
+  folder: ./result
+
+# 可使用默认值
 prompt:
   # 提示词中的 {question}、{expectedAnswer}、{answer} 分别会被替换为 问题、标准答案、实际回答内容
   evaluator: |
 %s
 
+# 可选
 langfuse:
   enable: false
   host: https://cloud.langfuse.com
@@ -70,10 +89,8 @@ langfuse:
   secret-key: sk-lf-xxx
 `, evaluatorPrompt)
 
-var inputFilePath = ""
-var configsFilePath = ""
-var parallel = 0
 var outputFolder = ""
+var parallel = 0
 
 func main() {
 	app := &cli.App{
@@ -81,20 +98,6 @@ func main() {
 		Usage:   "Evaluate QA capability of LLM model with LLM model.",
 		Version: "v2.4.2",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:     "input-file",
-				Aliases:  []string{"i"},
-				Usage:    "CSV file with `q` (as question) and `a` (as answer) columns, default is ./input.csv .",
-				Value:    "./input.csv",
-				Required: false,
-			},
-			&cli.StringFlag{
-				Name:     "output-folder",
-				Aliases:  []string{"o"},
-				Usage:    "Folder of output txt files, default is ./result .",
-				Value:    "./result",
-				Required: false,
-			},
 			&cli.StringFlag{
 				Name:     "configs",
 				Aliases:  []string{"c"},
@@ -112,17 +115,15 @@ func main() {
 			&cli.IntFlag{
 				Name:     "parallel",
 				Aliases:  []string{"p"},
-				Usage:    "Parallel of chat request, default is 1.",
+				Usage:    "Parallel of chat request.",
 				Value:    1,
 				Required: false,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			inputFilePath = cCtx.String("input-file")
 			needTemplates := cCtx.Bool("templates")
-			configsFilePath = cCtx.String("configs")
+			configsFilePath := cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
-			outputFolder = cCtx.String("output-folder")
 
 			if needTemplates {
 				err := os.WriteFile("configs.yaml_template", []byte(configsTemplate), 0644)
@@ -132,12 +133,15 @@ func main() {
 					fmt.Println("生成模板文件成功！")
 				}
 			} else {
-				err := os.MkdirAll(outputFolder, 0755)
-				if err != nil {
-					return fmt.Errorf("创建文件夹失败: %v", err)
+				configs := readConfigs(configsFilePath)
+				outputFolder = configs.Output.Folder
+				if strings.TrimSpace(outputFolder) == "" {
+					// 使用默认输出路径
+					outputFolder = "./result"
 				}
+				backupConfigsToOutputFolder(configs, outputFolder)
 
-				doEvaluate()
+				doEvaluate(configs)
 			}
 			return nil
 		},
@@ -148,13 +152,8 @@ func main() {
 	}
 }
 
-func doEvaluate() {
-	configs, err := readConfigs()
-	if err != nil {
-		fmt.Println("读取配置文件失败:", err)
-		return
-	}
-	qa, err := readInputCSV()
+func doEvaluate(configs *Configs) {
+	qa, err := readInputCSV(configs.Input.File)
 	if err != nil {
 		fmt.Println("读取输入文件失败:", err)
 		return
@@ -477,25 +476,37 @@ func cleanMarkdownJsonSymbolIfNeeded(content string) string {
 	return content
 }
 
-func readConfigs() (*Configs, error) {
+func readConfigs(configsFilePath string) *Configs {
 	content, err := os.ReadFile(configsFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("读取模型配置失败: %v", err)
+		log.Panicf("读取模型配置 %s 失败: %v", configsFilePath, err)
 	}
 	var config Configs
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
-		return nil, fmt.Errorf("解析模型配置失败: %v", err)
+		log.Panicf("解析模型配置失败: %v", err)
 	}
-	fileName := fmt.Sprintf("%s/configs.yaml", outputFolder)
-	err = os.WriteFile(fileName, content, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("备份模型配置文件失败: %v", err)
-	}
-	return &config, nil
+	return &config
 }
 
-func readInputCSV() ([][]string, error) {
+func backupConfigsToOutputFolder(configs *Configs, outputFolder string) {
+	err := os.MkdirAll(outputFolder, 0755)
+	if err != nil {
+		log.Panicf("创建输出文件夹失败: %v", err)
+	}
+	fileName := fmt.Sprintf("%s/configs.yaml", outputFolder)
+	content, err := yaml.Marshal(configs)
+	if err != nil {
+		log.Panicf("序列化模型配置失败: %v", err)
+	}
+	// 将内容写入文件
+	err = os.WriteFile(fileName, content, 0644)
+	if err != nil {
+		log.Panicf("备份模型配置文件失败: %v", err)
+	}
+}
+
+func readInputCSV(inputFilePath string) ([][]string, error) {
 	file, err := os.Open(inputFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("打开输入文件失败: %v", err)
@@ -535,6 +546,15 @@ type Configs struct {
 		Candidate ModelConfig `yaml:"candidate"`
 		Evaluator ModelConfig `yaml:"evaluator"`
 	} `yaml:"model"`
+	Input struct {
+		File           string `yaml:"file"`
+		Question       string `yaml:"question"`
+		ExpectedAnswer string `yaml:"expectedAnswer"`
+		Answer         string `yaml:"answer"`
+	} `yaml:"input"`
+	Output struct {
+		Folder string `yaml:"folder"`
+	} `yaml:"output"`
 	Prompt struct {
 		Evaluator string `yaml:"evaluator"`
 	} `yaml:"prompt"`
