@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -349,12 +350,11 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	if err != nil {
 		return "", "", fmt.Errorf("序列化请求体失败: %v", err)
 	}
-	jsonBodyStr := string(jsonBody)
 
 	client := &http.Client{
 		Timeout: 600 * time.Second, // 设置超时时间为 600 秒
 	}
-	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", strings.NewReader(jsonBodyStr))
+	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewReader(jsonBody))
 	if err != nil {
 		return "", "", fmt.Errorf("创建请求失败: %v", err)
 	}
@@ -362,8 +362,8 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	start := time.Now()                                            // 记录开始时间
-	resp, err := doRequestWithRetry(req, client, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
+	start := time.Now()                                                      // 记录开始时间
+	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
 		return "", "", fmt.Errorf("发送请求失败: %v", err)
 	}
@@ -409,12 +409,12 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	}
 	duration := time.Since(start) // 计算调用时长
 	fmt.Printf("\n模型输出：\n%s\n", content)
-	fmt.Printf("\n调用耗时 %v (%s~) \n", duration, start)
+	fmt.Printf("\n调用耗时 %v (%s start) \n", duration, start)
 	return id, content, nil
 }
 
 // doRequestWithRetry 执行 HTTP 请求并支持重试机制
-func doRequestWithRetry(req *http.Request, client *http.Client, maxRetries int, retryDelay time.Duration) (*http.Response, error) {
+func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []byte, maxRetries int, retryDelay time.Duration) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 
@@ -427,6 +427,7 @@ func doRequestWithRetry(req *http.Request, client *http.Client, maxRetries int, 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
 			time.Sleep(time.Duration(i) * retryDelay)
+			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
 			fmt.Printf("请求失败，重试第 %d 次...\n %v \n", i+1, err)
 		}
 	}
@@ -540,12 +541,12 @@ func createLangfuseScore(configs *Configs, id string, score string, question str
 	if err != nil {
 		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
 	}
-	jsonBodyStr := string(jsonBody)
-	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", strings.NewReader(jsonBodyStr))
+
+	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewReader(jsonBody))
 	req.SetBasicAuth(configs.Langfuse.PublicKey, configs.Langfuse.SecretKey)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
-	resp, err := doRequestWithRetry(req, client, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
+	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
 		fmt.Printf("创建 Langfuse Score 请求异常 %s", err)
 	}
