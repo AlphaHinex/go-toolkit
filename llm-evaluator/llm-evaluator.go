@@ -278,7 +278,7 @@ func doEvaluate(configs *Configs) {
 	}()
 
 	// 将 channel 中的内容写入文件
-	outputFilePath := fmt.Sprintf("%s/results.csv", outputFolder)
+	outputFilePath := fmt.Sprintf("%s/evaluate_result_of_%s_%s.csv", outputFolder, configs.Model.Candidate.Model, time.Now().Format("20060102150405"))
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		log.Fatalf("创建输出文件失败: %v", err)
