@@ -428,7 +428,7 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 		if i < maxRetries {
 			time.Sleep(time.Duration(i) * retryDelay)
 			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
-			fmt.Printf("请求失败，重试第 %d 次...\n %v \n", i+1, err)
+			fmt.Printf("请求 %s 失败，重试第 %d 次...\n %v \n", req.RequestURI, i+1, err)
 		}
 	}
 
