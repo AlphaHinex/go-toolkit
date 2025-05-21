@@ -64,12 +64,13 @@ model:
 # 必填
 input:
   file: ./input.csv
-  # 问题列名
-  question: question
-  # 标准答案列名
-  expectedAnswer: expectedAnswer
-  # 实际回答列名
-  answer: answer
+  columns:
+    # 问题列名
+    question: question
+    # 标准答案列名
+    expectedAnswer: expectedAnswer
+    # 评价标准（值为 = 时表示回答内容必须与标准答案完全一致，其余值或无此列表示语义一致）
+    standard: standard
 
 # 可使用默认值
 output:
@@ -155,23 +156,21 @@ func main() {
 func doEvaluate(configs *Configs) {
 	qa, err := readInputCSV(configs.Input.File)
 	if err != nil {
-		fmt.Println("读取输入文件失败:", err)
-		return
+		log.Panicf("读取输入文件失败: %v", err)
 	}
-	// 从 qa[0] 中查找 q 列索引
-	var qIndex, aIndex, sIndex int
+	// 从首行查找问题、标准答案、评价标准列索引
+	qIndex, aIndex, sIndex := -1, -1, -1
 	for i, header := range qa[0] {
-		if strings.ToLower(header) == "q" {
+		if header == configs.Input.Columns.Question {
 			qIndex = i
-		} else if strings.ToLower(header) == "a" {
+		} else if header == configs.Input.Columns.ExpectedAnswer {
 			aIndex = i
-		} else if strings.ToLower(header) == "s" {
+		} else if header == configs.Input.Columns.Standard {
 			sIndex = i
 		}
 	}
 	if qIndex < 0 || aIndex < 0 {
-		fmt.Println("输入文件格式错误，必须包含 q 和 a 列")
-		return
+		log.Panicf("输入文件格式错误，必须包含 %s 和 %s 列", configs.Input.Columns.Question, configs.Input.Columns.ExpectedAnswer)
 	}
 
 	candidateModel := configs.Model.Candidate
@@ -547,10 +546,12 @@ type Configs struct {
 		Evaluator ModelConfig `yaml:"evaluator"`
 	} `yaml:"model"`
 	Input struct {
-		File           string `yaml:"file"`
-		Question       string `yaml:"question"`
-		ExpectedAnswer string `yaml:"expectedAnswer"`
-		Answer         string `yaml:"answer"`
+		File    string `yaml:"file"`
+		Columns struct {
+			Question       string `yaml:"question"`
+			ExpectedAnswer string `yaml:"expectedAnswer"`
+			Standard       string `yaml:"standard"`
+		} `yaml:"columns"`
 	} `yaml:"input"`
 	Output struct {
 		Folder string `yaml:"folder"`
