@@ -20,7 +20,32 @@ import (
 	"time"
 )
 
-var configsTemplate = `
+var evaluatorPrompt = `
+    ## 目标
+    
+    请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别，并给出评估依据。以 json 结构返回评估结果，score 代表得分，reason 代表原因。
+    无区别 score 为 1，有区别为 0，不确定为 -1。
+    
+    ## 返回结构示例
+    
+    {"score":"1", "reason":"给出评分依据"}
+    
+    ## 评估内容 
+    
+    ### 问题: 
+    
+    {question}
+    
+    ### 标准答案: 
+    
+    {expectedAnswer}
+    
+    ### 回答: 
+    
+    {answer}
+`
+
+var configsTemplate = fmt.Sprintf(`
 model:
   candidate:
     endpoint: https://api.openai.com
@@ -32,12 +57,18 @@ model:
     api-key: sk-xxxxxxxx
     model: GPT-4o
     temperature: 0
+
+prompt:
+  # 提示词中的 {question}、{expectedAnswer}、{answer} 分别会被替换为 问题、标准答案、实际回答内容
+  evaluator: |
+%s
+
 langfuse:
   enable: false
   host: https://cloud.langfuse.com
   public-key: pk-lf-xxx
   secret-key: sk-lf-xxx
-`
+`, evaluatorPrompt)
 
 var inputFilePath = ""
 var configsFilePath = ""
@@ -222,7 +253,7 @@ func doEvaluate() {
 				}
 			} else {
 				// 调用评估模型
-				_, scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(question, answer, expectedAnswer), nil)
+				_, scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
@@ -333,23 +364,14 @@ func toOneCell(content string) string {
 	return content
 }
 
-func getEvaluatePrompt(question string, answer string, expectedAnswer string) string {
-	return fmt.Sprintf(`## 目标
-
-请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别，并给出评估依据。以 json 结构返回评估结果，score 代表得分，reason 代表原因。
-无区别 score 为 1，有区别为 0，不确定为 -1。
-
-## 返回结构示例
-
-{"score":"1", "reason":"给出评分依据"}
-
-## 评估内容 
-
-### 问题: %s
-
-### 标准答案: %s
-
-### 回答: %s`, question, expectedAnswer, answer)
+func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
+	if strings.TrimSpace(prompt) == "" {
+		prompt = evaluatorPrompt
+	}
+	prompt = strings.ReplaceAll(prompt, "{question}", question)
+	prompt = strings.ReplaceAll(prompt, "{expectedAnswer}", expectedAnswer)
+	prompt = strings.ReplaceAll(prompt, "{answer}", answer)
+	return prompt
 }
 
 func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, error) {
@@ -513,6 +535,9 @@ type Configs struct {
 		Candidate ModelConfig `yaml:"candidate"`
 		Evaluator ModelConfig `yaml:"evaluator"`
 	} `yaml:"model"`
+	Prompt struct {
+		Evaluator string `yaml:"evaluator"`
+	} `yaml:"prompt"`
 	Langfuse struct {
 		Enable    bool   `yaml:"enable"`
 		Host      string `yaml:"host"`
