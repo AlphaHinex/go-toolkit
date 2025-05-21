@@ -266,7 +266,11 @@ func doEvaluate(configs *Configs) {
 			}
 			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
 			if configs.Langfuse.Enable {
-				createLangfuseScore(configs, id, score, question, answer, expectedAnswer, reason)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					createLangfuseScore(configs, id, score, question, answer, expectedAnswer, reason)
+				}()
 			}
 		}(record)
 	}
