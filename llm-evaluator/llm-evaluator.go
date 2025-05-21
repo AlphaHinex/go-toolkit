@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -141,7 +140,7 @@ func main() {
 					// 使用默认输出路径
 					outputFolder = "./result"
 				}
-				prefix = fmt.Sprintf("%s/%s_%s_", outputFolder, configs.Model.Candidate.Model, time.Now().Format("20060102150405"))
+				prefix = fmt.Sprintf("%s/%s_%s_", outputFolder, configs.Model.Candidate.Model, time.Now().Format("20060102_150405"))
 				backupConfigsToOutputFolder(configs, outputFolder)
 
 				doEvaluate(configs)
@@ -350,11 +349,12 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	if err != nil {
 		return "", "", fmt.Errorf("序列化请求体失败: %v", err)
 	}
+	jsonBodyStr := string(jsonBody)
 
 	client := &http.Client{
 		Timeout: 600 * time.Second, // 设置超时时间为 600 秒
 	}
-	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", strings.NewReader(jsonBodyStr))
 	if err != nil {
 		return "", "", fmt.Errorf("创建请求失败: %v", err)
 	}
@@ -540,7 +540,8 @@ func createLangfuseScore(configs *Configs, id string, score string, question str
 	if err != nil {
 		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
 	}
-	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewBuffer(jsonBody))
+	jsonBodyStr := string(jsonBody)
+	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", strings.NewReader(jsonBodyStr))
 	req.SetBasicAuth(configs.Langfuse.PublicKey, configs.Langfuse.SecretKey)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
