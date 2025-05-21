@@ -304,54 +304,6 @@ func doEvaluate(configs *Configs) {
 	fmt.Printf("结果已写入文件: %s\n", outputFilePath)
 }
 
-func createLangfuseScore(configs *Configs, id string, score string, question string, answer string, expectedAnswer string, reason string) {
-	var value interface{}
-	scoreInt, err := strconv.Atoi(score)
-	if err != nil {
-		value = score
-	} else {
-		value = scoreInt
-	}
-	body := LangfuseScore{
-		TraceId: id,
-		Value:   value,
-		Name:    configs.Langfuse.ScoreName,
-		Metadata: struct {
-			Reason         string `json:"reason"`
-			Answer         string `json:"answer"`
-			Question       string `json:"question"`
-			ExpectedAnswer string `json:"expected_answer"`
-		}{
-			Reason:         reason,
-			Answer:         answer,
-			Question:       question,
-			ExpectedAnswer: expectedAnswer,
-		},
-	}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
-	}
-	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewBuffer(jsonBody))
-	req.SetBasicAuth(configs.Langfuse.PublicKey, configs.Langfuse.SecretKey)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("创建 Langfuse Score 请求异常 %s", err)
-	}
-	defer resp.Body.Close()
-	statusCode := resp.StatusCode
-	if statusCode != 200 {
-		// 读取响应体
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Printf("读取创建 Langfuse Score 请求响应体异常 %s", err)
-		}
-		fmt.Printf("调用 Langfuse 失败：%s %s\n", resp.Status, string(body))
-	}
-}
-
 func toOneCells(contents []string) []string {
 	for i, content := range contents {
 		contents[i] = toOneCell(content)
@@ -408,8 +360,8 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	start := time.Now() // 记录开始时间
-	resp, err := client.Do(req)
+	start := time.Now()                                            // 记录开始时间
+	resp, err := doRequestWithRetry(req, client, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
 		return "", "", fmt.Errorf("发送请求失败: %v", err)
 	}
@@ -457,6 +409,28 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	fmt.Printf("\n模型输出：\n%s\n", content)
 	fmt.Printf("\n调用耗时 %v (%s~) \n", duration, start)
 	return id, content, nil
+}
+
+// doRequestWithRetry 执行 HTTP 请求并支持重试机制
+func doRequestWithRetry(req *http.Request, client *http.Client, maxRetries int, retryDelay time.Duration) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	for i := 0; i <= maxRetries; i++ {
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			return resp, nil
+		}
+
+		// 如果不是最后一次重试，等待一段时间后重试
+		if i < maxRetries {
+			time.Sleep(time.Duration(i) * retryDelay)
+			fmt.Printf("请求失败，重试第 %d 次...\n", i+1)
+		}
+	}
+
+	// 返回最后一次的响应或错误
+	return resp, err
 }
 
 func cleanThinkOfDeepSeek(content string) string {
@@ -534,6 +508,54 @@ func parseChatMessages(s string) ([]Message, error) {
 		return nil, err
 	}
 	return messages, nil
+}
+
+func createLangfuseScore(configs *Configs, id string, score string, question string, answer string, expectedAnswer string, reason string) {
+	var value interface{}
+	scoreInt, err := strconv.Atoi(score)
+	if err != nil {
+		value = score
+	} else {
+		value = scoreInt
+	}
+	body := LangfuseScore{
+		TraceId: id,
+		Value:   value,
+		Name:    configs.Langfuse.ScoreName,
+		Metadata: struct {
+			Reason         string `json:"reason"`
+			Answer         string `json:"answer"`
+			Question       string `json:"question"`
+			ExpectedAnswer string `json:"expected_answer"`
+		}{
+			Reason:         reason,
+			Answer:         answer,
+			Question:       question,
+			ExpectedAnswer: expectedAnswer,
+		},
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
+	}
+	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewBuffer(jsonBody))
+	req.SetBasicAuth(configs.Langfuse.PublicKey, configs.Langfuse.SecretKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := doRequestWithRetry(req, client, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
+	if err != nil {
+		fmt.Printf("创建 Langfuse Score 请求异常 %s", err)
+	}
+	defer resp.Body.Close()
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		// 读取响应体
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("读取创建 Langfuse Score 请求响应体异常 %s", err)
+		}
+		fmt.Printf("调用 Langfuse 失败：%s %s\n", resp.Status, string(body))
+	}
 }
 
 type ModelConfig struct {
