@@ -88,6 +88,7 @@ langfuse:
   host: https://cloud.langfuse.com
   public-key: pk-lf-xxx
   secret-key: sk-lf-xxx
+  score-name: llm-evaluator
 `, evaluatorPrompt)
 
 var outputFolder = ""
@@ -128,11 +129,11 @@ func main() {
 			parallel = cCtx.Int("parallel")
 
 			if needTemplates {
-				err := os.WriteFile("configs.yaml_template", []byte(configsTemplate), 0644)
+				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
 				if err != nil {
-					return fmt.Errorf("生成模板文件失败: %v", err)
+					log.Fatalf("生成模板文件失败: %v", err)
 				} else {
-					fmt.Println("生成模板文件成功！")
+					log.Println("生成模板文件成功！")
 				}
 			} else {
 				configs := readConfigs(configsFilePath)
@@ -216,7 +217,8 @@ func doEvaluate(configs *Configs) {
 				// 调用候选模型作答
 				id, answer, err = callChatAPI(candidateModel, true, q, chatHistory)
 				if err != nil {
-					fmt.Printf("调用模型 %s 失败: %v\n", candidateModel.Model, err)
+					log.Printf("%s 模型调用失败: %v\n", candidateModel.Model, err)
+					continue
 				}
 				answer = cleanThinkOfDeepSeek(answer)
 				chatHistory = append(chatHistory, Message{
@@ -234,7 +236,7 @@ func doEvaluate(configs *Configs) {
 				// 将 chatHistory 转为 json 字符串
 				chatHistoryJSON, err := json.Marshal(chatHistory)
 				if err != nil {
-					fmt.Printf("序列化聊天记录失败: %v\n", err)
+					log.Printf("序列化聊天记录失败: %v\n", err)
 					return
 				}
 				answer = string(chatHistoryJSON)
@@ -262,7 +264,7 @@ func doEvaluate(configs *Configs) {
 				score = result["score"]
 				reason = result["reason"]
 				if err != nil {
-					fmt.Printf("调用模型 %s 失败: %v\n", evaluatorModel.Model, err)
+					log.Printf("%s 模型调用失败: %v\n", evaluatorModel.Model, err)
 					return
 				}
 			}
@@ -348,7 +350,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return "", "", fmt.Errorf("序列化请求体失败: %v", err)
+		log.Panicf("序列化请求体失败: %v", err)
 	}
 
 	client := &http.Client{
@@ -356,7 +358,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", "", fmt.Errorf("创建请求失败: %v", err)
+		log.Panicf("创建请求失败: %v", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
@@ -365,7 +367,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	start := time.Now()                                                      // 记录开始时间
 	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
-		return "", "", fmt.Errorf("发送请求失败: %v", err)
+		log.Panicf("发送请求失败: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -388,7 +390,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 				var apiResp StreamingAPIResponse
 				err := json.Unmarshal([]byte(jsonStr), &apiResp)
 				if err != nil {
-					return "", "", fmt.Errorf("解析响应失败: %v", err)
+					log.Panicf("解析响应失败: %v", err)
 				}
 				if len(apiResp.Choices) > 0 {
 					content += apiResp.Choices[0].Delta.Content
@@ -400,7 +402,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		var apiResp BlockingAPIResponse
 		err := json.NewDecoder(resp.Body).Decode(&apiResp)
 		if err != nil {
-			return "", "", fmt.Errorf("解析响应失败: %v", err)
+			log.Panicf("解析响应失败: %v", err)
 		}
 		if len(apiResp.Choices) > 0 {
 			content = apiResp.Choices[0].Message.Content
@@ -426,9 +428,9 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
+			log.Printf("%s 请求失败，稍后第 %d 次重试...\n %v \n", req.RequestURI, i+1, err)
 			time.Sleep(time.Duration(i) * retryDelay)
 			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
-			fmt.Printf("请求 %s 失败，重试第 %d 次...\n %v \n", req.RequestURI, i+1, err)
 		}
 	}
 
@@ -489,7 +491,7 @@ func backupConfigsToOutputFolder(configs *Configs, outputFolder string) {
 func readInputCSV(inputFilePath string) ([][]string, error) {
 	file, err := os.Open(inputFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("打开输入文件失败: %v", err)
+		log.Panicf("打开输入文件失败: %v", err)
 	}
 	defer file.Close()
 
@@ -498,8 +500,7 @@ func readInputCSV(inputFilePath string) ([][]string, error) {
 	// 读取所有行
 	records, err := reader.ReadAll()
 	if err != nil {
-		fmt.Printf("读取输入文件失败: %v\n", err)
-		return nil, err
+		log.Panicf("读取输入文件失败: %v\n", err)
 	}
 	return records, nil
 }
@@ -539,7 +540,7 @@ func createLangfuseScore(configs *Configs, id string, score string, question str
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		fmt.Printf("序列化 Langfuse Score 请求体异常 %s", err)
+		log.Printf("序列化 Langfuse Score 请求体异常 %s", err)
 	}
 
 	req, err := http.NewRequest("POST", configs.Langfuse.Host+"/api/public/scores", bytes.NewReader(jsonBody))
@@ -548,7 +549,7 @@ func createLangfuseScore(configs *Configs, id string, score string, question str
 	client := &http.Client{}
 	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
-		fmt.Printf("创建 Langfuse Score 请求异常 %s", err)
+		log.Printf("Langfuse 创建 Score 请求异常，请求体：\n %s\n异常信息：%v", jsonBody, err)
 	}
 	defer resp.Body.Close()
 	statusCode := resp.StatusCode
@@ -556,9 +557,9 @@ func createLangfuseScore(configs *Configs, id string, score string, question str
 		// 读取响应体
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("读取创建 Langfuse Score 请求响应体异常 %s", err)
+			log.Printf("读取创建 Langfuse Score 请求响应体异常 %v", err)
 		}
-		fmt.Printf("调用 Langfuse 失败：%s %s\n", resp.Status, string(body))
+		log.Printf("调用 Langfuse 失败：%s %s\n", resp.Status, string(body))
 	}
 }
 
