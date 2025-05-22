@@ -304,8 +304,11 @@ func doEvaluate(configs *Configs) {
 			log.Fatalf("写入文件失败: %v", err)
 		}
 	}
-	writer.Flush()
-	fmt.Printf("结果已写入文件: %s\n", outputFilePath)
+	err = writer.Flush()
+	if err != nil {
+		log.Fatalf("刷新输出文件失败: %v", err)
+	}
+	log.Printf("结果已写入文件: %s\n", outputFilePath)
 }
 
 func toOneCells(contents []string) []string {
@@ -333,7 +336,7 @@ func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
 }
 
 func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, error) {
-	fmt.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
+	log.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
 	messages := make([]Message, len(history)+1)
 	messages = append(history, Message{Role: "user", Content: userPrompt})
 
@@ -410,8 +413,8 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		}
 	}
 	duration := time.Since(start) // 计算调用时长
-	fmt.Printf("\n模型输出：\n%s\n", content)
-	fmt.Printf("\n调用耗时 %v (%s start) \n", duration, start)
+	log.Printf("\n模型输出（%s）：\n%s\n", id, content)
+	log.Printf("\n调用耗时 %v (%s start) \n", duration, start)
 	return id, content, nil
 }
 
@@ -428,7 +431,7 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
-			log.Printf("%s 请求失败，稍后第 %d 次重试...\n %v \n", req.RequestURI, i+1, err)
+			log.Printf("%s 请求失败，稍后第 %d 次重试...\n请求体：\n%s\n错误信息：\n%v\n", req.RequestURI, i+1, requestBody, err)
 			time.Sleep(time.Duration(i) * retryDelay)
 			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
 		}
