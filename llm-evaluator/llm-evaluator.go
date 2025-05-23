@@ -68,7 +68,7 @@ input:
     # 问题列名
     question: question
     # 标准答案列名
-    expectedAnswer: expectedAnswer
+    expected-answer: expected-answer
     # 评价标准（值为 = 时表示回答内容必须与标准答案完全一致，其余值或无此列表示语义一致）
     standard: standard
 
@@ -583,7 +583,7 @@ type Configs struct {
 		File    string `yaml:"file"`
 		Columns struct {
 			Question       string `yaml:"question"`
-			ExpectedAnswer string `yaml:"expectedAnswer"`
+			ExpectedAnswer string `yaml:"expected-answer"`
 			Standard       string `yaml:"standard"`
 		} `yaml:"columns"`
 	} `yaml:"input"`
