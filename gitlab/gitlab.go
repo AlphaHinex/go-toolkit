@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -29,7 +30,7 @@ func main() {
 	app := &cli.App{
 		Name:    "gitlab",
 		Usage:   "Use GitLab API to analyse commits",
-		Version: "v2.4.2",
+		Version: "v2.5.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",
@@ -288,7 +289,7 @@ func getAllBranches(projectId int) (branches, error) {
 
 func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	text := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(content+desc, "\t", "\\t"), "\r", "\\r"), "\n", "\\n")
-	payload := strings.NewReader(`{
+	payload := `{
     "msg_type": "post",
     "content": {
         "post": {
@@ -313,8 +314,8 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
         }
     } 
 }
-`)
-	req, err := http.NewRequest("POST", url, payload)
+`
+	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 
 	if err != nil {
 		fmt.Println(err)
@@ -322,6 +323,10 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
+	// Set GetBody to allow retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(payload)), nil
+	}
 	res, err := doRequestWithRetry(req)
 	if err != nil {
 		fmt.Println(err)
