@@ -322,7 +322,10 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
-	// TODO post request's payload may not usable when retry
+	// Set GetBody to allow retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+	}
 	res, err := doRequestWithRetry(req)
 	if err != nil {
 		fmt.Println(err)
