@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -324,7 +325,7 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 
 	// Set GetBody to allow retries
 	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		return io.NopCloser(payload), nil
 	}
 	res, err := doRequestWithRetry(req)
 	if err != nil {
