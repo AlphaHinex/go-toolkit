@@ -289,7 +289,7 @@ func getAllBranches(projectId int) (branches, error) {
 
 func sendLarkMsg(url, projectUrl, title, content, desc string) {
 	text := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(content+desc, "\t", "\\t"), "\r", "\\r"), "\n", "\\n")
-	payload := strings.NewReader(`{
+	payload := `{
     "msg_type": "post",
     "content": {
         "post": {
@@ -314,8 +314,8 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
         }
     } 
 }
-`)
-	req, err := http.NewRequest("POST", url, payload)
+`
+	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
 
 	if err != nil {
 		fmt.Println(err)
@@ -325,7 +325,7 @@ func sendLarkMsg(url, projectUrl, title, content, desc string) {
 
 	// Set GetBody to allow retries
 	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(payload), nil
+		return io.NopCloser(strings.NewReader(payload)), nil
 	}
 	res, err := doRequestWithRetry(req)
 	if err != nil {
