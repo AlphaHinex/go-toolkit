@@ -99,7 +99,7 @@ func main() {
 	app := &cli.App{
 		Name:    "llm-evaluator",
 		Usage:   "Evaluate QA capability of LLM model with LLM model.",
-		Version: "v2.4.2",
+		Version: "v2.5.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "configs",
