@@ -92,6 +92,64 @@ langfuse:
   score-name: llm-evaluator
 `, evaluatorPrompt)
 
+var inputCsvTemplate = `question,expected-answer,standard
+什么原因会导致邮件被退回？,邮件被退回是指你发送的邮件无法被送达到收件人的邮箱。邮件被退回的原因有很多，包括：\n1. 无效的邮箱地址：你输入的邮箱地址可能无效或者有拼写错误，这会导致邮件无法被送达。\n2. 收件人邮箱已满：如果收件人的邮箱已经满了，邮件就会被退回到发件人的邮箱。\n3. 服务器问题：如果收件人的邮箱服务器出现问题或者宕机，邮件就无法被送达并会被退回到发件人的邮箱。\n4. 垃圾邮件过滤器：如果你的邮件被标记为垃圾邮件或者包含某些触发垃圾邮件过滤器的关键词或短语，邮件就会被屏蔽并退回到发件人的邮箱。\n5. 发件人被屏蔽：如果收件人已经屏蔽了你的邮箱地址，你的邮件就会被退回。\n\n为了避免邮件被退回，重要的是要确保邮箱地址正确，收件人的邮箱没有满，以及你的邮件没有被标记为垃圾邮件。你也可以与收件人核实是否收到了邮件，以及他们的邮箱服务器或垃圾邮件过滤器是否有问题。,=
+给我写一个垂直轮播的代码，用于我的落地页。,"很抱歉，作为一个AI语言模型，我无法访问您的落地页代码，也不知道您使用的编程语言。但是，我可以给您提供使用HTML、CSS和JavaScript创建垂直轮播的一般思路。\n\n以下是一个示例：\n\nHTML：\n```\nhtml<div class=""carousel"">\n  <div class=""carousel-inner"">\n    <div class=""carousel-item active"">\n      <img src=""image1.jpg"" alt=""Image 1"">\n    </div>\n    <div class=""carousel-item"">\n      <img src=""image2.jpg"" alt=""Image 2"">\n    </div>\n    <div class=""carousel-item"">\n      <img src=""image3.jpg"" alt=""Image 3"">\n    </div>\n  </div>\n</div>\n```\nCSS：\n```css\n.carousel {\n  position: relative;\n  width: 100%;\n  height: 500px; /* 设置轮播的高度 */\n  overflow: hidden;\n}\n.carousel-inner {\n  position: absolute;\n  top: 0;\n  left: 0;\n  height: 100%;\n  width: 100%;\n  display: flex;\n  flex-direction: column;\n  transition: transform 0.6s ease-in-out;\n}\n.carousel-item {\n  flex: 1 0 auto;\n  position: relative;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n}\n.carousel-item img {\n  height: 100%;\n  width: 100%;\n  object-fit: cover;\n}\n```\nJavaScript：\n```javascript\nlet slideIndex = 1;\nshowSlides(slideIndex);\nfunction plusSlides(n) {\n  showSlides(slideIndex += n);\n}\nfunction showSlides(n) {\n  let i;\n  let slides = document.getElementsByClassName(""carousel-item"");\n  if (n > slides.length) {slideIndex = 1}\n  if (n < 1) {slideIndex = slides.length}\n  for (i = 0; i < slides.length; i++) {\n      slides[i].style.transform = ""translateY("" + ((i-slideIndex+1)*100) + ""%)"";\n  }\n}\n```\n在HTML中，具有“carousel”类的“div”是轮播的容器。在此容器内部是另一个具有“carousel-inner”类的“div”，它将包含单个轮播项，每个项都包装在具有“carousel-item”类的“div”中。CSS设置轮播的高度，隐藏任何溢出，并使用flexbox垂直排列项。JavaScript将初始幻灯片索引设置为1，并定义“showSlides”函数，该函数接受一个参数“n”，表示要显示的幻灯片。 “plusSlides”函数通过参数“n”更新幻灯片索引并调用“showSlides”。在“showSlides”中，当前幻灯片垂直翻译到轮播容器的顶部，而其他幻灯片则翻译到其下方。\n\n这只是创建垂直轮播的一种示例。您可能需要修改代码以适应您特定的用例和偏好。",%
+"[
+    {
+        ""role"": ""user"",
+        ""content"": ""大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""在英国，大多数人在网上搜索什么类型的地板？""
+    }
+]","[
+    {
+        ""role"": ""user"",
+        ""content"": ""大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""当涉及到地板时，很难说大多数人在网上搜索什么类型的地板，因为这取决于地理位置、个人喜好和当前的趋势。一些经常在网上搜索的受欢迎的地板类型包括实木、强化木地板、瓷砖、地毯和乙烯基。""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""在英国，大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""很难准确地说英国大多数人在网上搜索什么类型的地板，因为这取决于地理位置、个人喜好和当前的趋势。然而，在英国，一些经常在网上搜索的受欢迎的地板类型包括：\n* 地毯\n* 强化木地板\n* 实木\n* 乙烯基\n* 瓷砖（如陶瓷或瓷砖）\n* 工程木\n* 豪华乙烯基瓷砖（LVT）\n* 天然石材\n需要注意的是，某些类型的地板的受欢迎程度会随着时间的推移而改变，因此最好定期检查搜索数据和趋势以保持最新。""
+    }
+]",%
+"[
+    {
+        ""role"": ""user"",
+        ""content"": ""AI中的N-Tile问题？""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""上述的启发式算法""
+    }
+]","[
+    {
+        ""role"": ""user"",
+        ""content"": ""AI中的N-Tile问题？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""AI中的N-Tile问题是将一组项目分成N个子集，使得每个子集尽可能相似的问题。该问题通常用于机器学习中将数据集分成训练、验证和测试集，或将人口分组进行研究。该问题可以使用各种优化算法解决，例如线性规划或遗传算法。要优化的目标函数通常是子集的方差或熵的总和。""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""上述的启发式算法""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""有几种启发式算法可用于解决N-Tile问题。其中一些最常见的包括：\n1. 随机抽样：这涉及从集合中随机选择项目并将其放入子集中。这是一种简单快速的方法，但可能不会导致最优解。\n2. K-means聚类：这涉及根据其特征对项目进行聚类，然后将聚类分成子集。\n3. 遗传算法：这涉及使用遗传算法演化解决方案的种群，其中每个解决方案表示将项目划分为子集的可能性。\n4. 贪心算法：这涉及从空子集开始，反复添加最大程度减少子集方差的下一个项目。\n5. 局部搜索：这涉及从初始随机解开始，反复对子集进行小的更改，以尝试改善目标函数。\n6. 分而治之：这涉及将项目集递归地划分为越来越小的子集，直到每个子集仅包含一个项目。\n启发式算法的选择取决于特定的用例和可用资源。""
+    }
+]",%`
+
 var outputFolder = ""
 var parallel = 0
 var prefix = ""
@@ -113,7 +171,7 @@ func main() {
 			&cli.BoolFlag{
 				Name:     "templates",
 				Aliases:  []string{"t"},
-				Usage:    "Generate template files of configs.yaml in current path.",
+				Usage:    "Generate template files of configs.yaml (and input csv example) in current path.",
 				Value:    false,
 				Required: false,
 			},
@@ -141,9 +199,15 @@ func main() {
 			if needTemplates {
 				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
 				if err != nil {
-					log.Fatalf("生成模板文件失败: %v", err)
+					log.Fatalf("生成配置文件模板失败: %v", err)
 				} else {
-					log.Println("生成模板文件成功！")
+					log.Println("生成配置文件模板成功！")
+				}
+				err = os.WriteFile("input.csv_template", []byte(strings.TrimSpace(inputCsvTemplate)), 0644)
+				if err != nil {
+					log.Fatalf("生成 CSV 文件模板失败: %v", err)
+				} else {
+					log.Println("生成 CSV 文件模板成功！")
 				}
 			} else {
 				configs := readConfigs(configsFilePath)
