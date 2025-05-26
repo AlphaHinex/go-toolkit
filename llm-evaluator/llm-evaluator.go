@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -94,6 +95,7 @@ langfuse:
 var outputFolder = ""
 var parallel = 0
 var prefix = ""
+var samplingRate = 1.0
 
 func main() {
 	app := &cli.App{
@@ -122,11 +124,19 @@ func main() {
 				Value:    1,
 				Required: false,
 			},
+			&cli.Float64Flag{
+				Name:     "sampling-rate",
+				Aliases:  []string{"r"},
+				Usage:    "Sampling rate of all questions. 0.8 means 80% of questions will be sampled for evaluation. 1.0 means all questions will be evaluated",
+				Value:    1.0,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			needTemplates := cCtx.Bool("templates")
 			configsFilePath := cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
+			samplingRate = cCtx.Float64("sampling-rate")
 
 			if needTemplates {
 				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
@@ -183,6 +193,20 @@ func doEvaluate(configs *Configs) {
 	results := make(chan string)
 	// 定义一个带缓冲的 channel 作为信号量
 	semaphore := make(chan struct{}, parallel) // parallel 是并发限制数量
+
+	// 如果采样率小于 1.0，则随机采样
+	if samplingRate < 1.0 {
+		sampledQA := [][]string{qa[0]} // 保留表头
+		for _, record := range qa[1:] {
+			if len(sampledQA) == 1 || (samplingRate > 0 && rand.Float64() < samplingRate) {
+				sampledQA = append(sampledQA, record)
+			}
+		}
+		qa = sampledQA
+		log.Printf("采样后问题数量: %d\n", len(qa)-1)
+	} else {
+		log.Printf("未进行采样，问题数量: %d\n", len(qa)-1)
+	}
 
 	var wg sync.WaitGroup
 	for _, record := range qa[1:] { // 跳过表头
