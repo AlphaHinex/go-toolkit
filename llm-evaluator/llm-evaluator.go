@@ -501,6 +501,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		}
 	}
 	duration := time.Since(start) // 计算调用时长
+	log.Printf("\n%s 模型输入（%s）：\n%s\n", model.Model, id, userPrompt)
 	log.Printf("\n%s 模型输出（%s）：\n%s\n", model.Model, id, content)
 	log.Printf("\n%s 模型（%s）调用耗时 %v (%s start) \n", model.Model, id, duration, start)
 	return id, content, nil
