@@ -253,7 +253,7 @@ func doEvaluate(configs *Configs) {
 	candidateModel := configs.Model.Candidate
 	evaluatorModel := configs.Model.Evaluator
 
-	// 定义 channel
+	// 定义存放评估结果的 channel
 	results := make(chan string)
 	// 定义一个带缓冲的 channel 作为信号量
 	semaphore := make(chan struct{}, parallel) // parallel 是并发限制数量
@@ -275,7 +275,7 @@ func doEvaluate(configs *Configs) {
 	var wg sync.WaitGroup
 	for _, record := range qa[1:] { // 跳过表头
 		wg.Add(1)
-		go func(record []string) {
+		go func(oneLine []string) {
 			defer wg.Done()
 
 			// 占用一个并发槽
@@ -283,8 +283,8 @@ func doEvaluate(configs *Configs) {
 			defer func() { <-semaphore }() // 释放并发槽
 
 			// 获取问题和标准答案
-			question := record[qIndex]
-			expectedAnswer := record[aIndex]
+			question := oneLine[qIndex]
+			expectedAnswer := oneLine[aIndex]
 
 			var questions []string
 			chatMessages, err := parseChatMessages(question)
@@ -332,7 +332,7 @@ func doEvaluate(configs *Configs) {
 
 			score := ""
 			reason := ""
-			if sIndex > 0 && record[sIndex] == "=" {
+			if sIndex > 0 && oneLine[sIndex] == "=" {
 				// 判断 answer 与 expectedAnswer 是否完全一致
 				if strings.TrimSpace(answer) == strings.TrimSpace(expectedAnswer) {
 					score = "1"
@@ -356,7 +356,7 @@ func doEvaluate(configs *Configs) {
 					return
 				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
+			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(oneLine), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
 			if configs.Langfuse.Enable {
 				wg.Add(1)
 				go func() {
@@ -501,8 +501,8 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		}
 	}
 	duration := time.Since(start) // 计算调用时长
-	log.Printf("\n模型输出（%s）：\n%s\n", id, content)
-	log.Printf("\n调用耗时 %v (%s start) \n", duration, start)
+	log.Printf("\n%s 模型输出（%s）：\n%s\n", model.Model, id, content)
+	log.Printf("\n%s 模型（%s）调用耗时 %v (%s start) \n", model.Model, id, duration, start)
 	return id, content, nil
 }
 
