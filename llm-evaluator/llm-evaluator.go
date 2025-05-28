@@ -441,7 +441,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		log.Panicf("序列化请求体失败: %v", err)
+		log.Fatalf("序列化请求体失败: %v", err)
 	}
 
 	client := &http.Client{
@@ -449,7 +449,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewReader(jsonBody))
 	if err != nil {
-		log.Panicf("创建请求失败: %v", err)
+		log.Fatalf("创建请求失败: %v", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
@@ -458,7 +458,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	start := time.Now()                                                      // 记录开始时间
 	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
-		log.Panicf("发送请求失败: %v", err)
+		log.Fatalf("发送请求失败: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -481,7 +481,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 				var apiResp StreamingAPIResponse
 				err := json.Unmarshal([]byte(jsonStr), &apiResp)
 				if err != nil {
-					log.Panicf("解析响应失败: %v", err)
+					log.Fatalf("解析响应失败: %v", err)
 				}
 				if len(apiResp.Choices) > 0 {
 					content += apiResp.Choices[0].Delta.Content
@@ -493,7 +493,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		var apiResp BlockingAPIResponse
 		err := json.NewDecoder(resp.Body).Decode(&apiResp)
 		if err != nil {
-			log.Panicf("解析响应失败: %v", err)
+			log.Fatalf("解析响应失败: %v", err)
 		}
 		if len(apiResp.Choices) > 0 {
 			content = apiResp.Choices[0].Message.Content
@@ -515,12 +515,13 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 	for i := 0; i <= maxRetries; i++ {
 		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
+			log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n响应：\n%v\n", req.URL, i+1, requestBody, resp)
 			return resp, nil
 		}
 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
-			log.Printf("%s 请求失败，稍后第 %d 次重试...\n请求体：\n%s\n错误信息：\n%v\n", req.RequestURI, i+1, requestBody, err)
+			log.Printf("%s 请求失败，稍后第 %d 次重试...\n请求体：\n%s\n错误信息：\n%v\n", req.URL, i+1, requestBody, err)
 			time.Sleep(time.Duration(i) * retryDelay)
 			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
 		}
