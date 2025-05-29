@@ -284,6 +284,9 @@ func doEvaluate(configs *Configs) {
 
 			// 获取问题和标准答案
 			question := oneLine[qIndex]
+			if len(strings.TrimSpace(question)) == 0 {
+				return
+			}
 			expectedAnswer := oneLine[aIndex]
 
 			var questions []string
@@ -515,7 +518,9 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 	for i := 0; i <= maxRetries; i++ {
 		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n响应：\n%v\n", req.URL, i+1, requestBody, resp)
+			if i > 0 {
+				log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n响应：\n%v\n", req.URL, i+1, requestBody)
+			}
 			return resp, nil
 		}
 
