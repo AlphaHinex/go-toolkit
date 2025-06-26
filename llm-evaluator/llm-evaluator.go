@@ -230,7 +230,7 @@ func main() {
 
 				doEvaluate(configs)
 			}
-			log.Printf("执行评估完成，总耗时: %s\n", time.Since(start))
+			log.Printf("完成评估，总耗时: %s\n", time.Since(start))
 			return nil
 		},
 	}
@@ -369,14 +369,14 @@ func doEvaluate(configs *Configs) {
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
-				var result map[string]string
+				var result map[string]interface{}
 				err = json.Unmarshal([]byte(scoreWithReason), &result)
 				if err != nil {
 					log.Printf("解析评估结果失败！\n%s%v\n", scoreWithReason, err)
 					debugInfo += fmt.Sprintf("解析 JSON 字符串 %s 失败 (%v) ", scoreWithReason, err)
 				} else {
-					score = result["score"]
-					reason = result["reason"]
+					score = fmt.Sprint(result["score"])
+					reason = fmt.Sprint(result["reason"])
 				}
 			}
 
