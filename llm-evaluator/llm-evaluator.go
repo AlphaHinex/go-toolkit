@@ -24,26 +24,25 @@ import (
 var evaluatorPrompt = `
     ## 目标
     
-    请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别，并给出评估依据。以 json 结构返回评估结果，score 代表得分，reason 代表原因。
+    请根据问题和标准答案，评估回答的内容与标准答案中内容是否在语义上一致（如缺少标准答案中的某些信息，或存在标准答案中没有的内容等，均视为语义不一致），并给出评估依据。
+    以 json 结构返回评估结果，score 代表得分，reason 代表原因。
     无区别 score 为 1，有区别为 0，不确定为 -1。
-    
+
     ## 返回结构示例
-    
+
     {"score":"1", "reason":"给出评分依据"}
-    
-    ## 评估内容 
-    
-    ### 问题: 
-    
+
+    <问题>
     {question}
-    
-    ### 标准答案: 
-    
+    </问题>
+
+    <标准答案>
     {expectedAnswer}
-    
-    ### 回答: 
-    
+    </标准答案>
+
+    <回答>
     {answer}
+    </回答>
 `
 
 var configsTemplate = fmt.Sprintf(`
@@ -154,6 +153,7 @@ var outputFolder = ""
 var parallel = 0
 var prefix = ""
 var samplingRate = 1.0
+var debugEnabled = false
 
 func main() {
 	app := &cli.App{
@@ -189,12 +189,20 @@ func main() {
 				Value:    1.0,
 				Required: false,
 			},
+			&cli.BoolFlag{
+				Name:     "debug",
+				Aliases:  []string{"d"},
+				Usage:    "Enable debug mode, which will write more debug info into evaluation result file. Default is false.",
+				Value:    false,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			needTemplates := cCtx.Bool("templates")
 			configsFilePath := cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
 			samplingRate = cCtx.Float64("sampling-rate")
+			debugEnabled = cCtx.Bool("debug")
 
 			if needTemplates {
 				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
@@ -302,11 +310,14 @@ func doEvaluate(configs *Configs) {
 			}
 
 			// 多轮对话 id 取最后一个
-			var id, answer string
+			var id, answer, debugInfo string
+			var duration, totalDuration, evaluationDuration time.Duration
 			var chatHistory []Message
 			for _, q := range questions {
 				// 调用候选模型作答
-				id, answer, err = callChatAPI(candidateModel, true, q, chatHistory)
+				id, answer, duration, err = callChatAPI(candidateModel, true, q, chatHistory)
+				debugInfo += fmt.Sprintf("[%s] %s (%v) ", id, duration, err)
+				totalDuration += duration
 				if err != nil {
 					log.Printf("%s 模型调用失败: %v\n", candidateModel.Model, err)
 					continue
@@ -346,7 +357,9 @@ func doEvaluate(configs *Configs) {
 				}
 			} else {
 				// 调用评估模型
-				_, scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
+				evaId, scoreWithReason, duration, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
+				debugInfo += fmt.Sprintf("[%s] %s (%v) ", evaId, duration, err)
+				evaluationDuration = duration
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
@@ -359,7 +372,15 @@ func doEvaluate(configs *Configs) {
 					return
 				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(oneLine), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
+
+			log.Printf("[DEBUG] %s", debugInfo)
+			if debugEnabled {
+				// debug 模式增加三列输出：问答耗时、评估耗时、debug 信息
+				debugInfo = fmt.Sprintf(",%s,%s,%s", totalDuration, evaluationDuration, toOneCell(debugInfo))
+			} else {
+				debugInfo = ""
+			}
+			results <- fmt.Sprintf("%s,%s,%s,%s%s", strings.Join(toOneCells(oneLine), ","), toOneCell(answer), toOneCell(score), toOneCell(reason), debugInfo)
 			if configs.Langfuse.Enable {
 				wg.Add(1)
 				go func() {
@@ -385,7 +406,11 @@ func doEvaluate(configs *Configs) {
 	defer outputFile.Close()
 
 	writer := bufio.NewWriter(outputFile)
-	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason\n", strings.Join(qa[0], ",")))
+	debugTitle := ""
+	if debugEnabled {
+		debugTitle = ",answer_duration,evaluation_duration,debug_info"
+	}
+	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason%s\n", strings.Join(qa[0], ","), debugTitle))
 	if err != nil {
 		log.Fatalf("写入文件失败: %v", err)
 	}
@@ -426,7 +451,7 @@ func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
 	return prompt
 }
 
-func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, error) {
+func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, time.Duration, error) {
 	log.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
 	messages := make([]Message, len(history)+1)
 	messages = append(history, Message{Role: "user", Content: userPrompt})
@@ -467,7 +492,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
-		return "", "", fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		return "", "", time.Since(start), fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
 	var id, content string
@@ -507,7 +532,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	log.Printf("\n%s model input (%s):\n%s\n", model.Model, id, userPrompt)
 	log.Printf("\n%s model output (%s):\n%s\n", model.Model, id, content)
 	log.Printf("\n%s model (%s) call duration %v (%s start) \n", model.Model, id, duration, start)
-	return id, content, nil
+	return id, content, duration, nil
 }
 
 // doRequestWithRetry 执行 HTTP 请求并支持重试机制
@@ -519,7 +544,7 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			if i > 0 {
-				log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n响应：\n%v\n", req.URL, i+1, requestBody)
+				log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n", req.URL, i+1, requestBody)
 			}
 			return resp, nil
 		}
