@@ -198,6 +198,7 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			start := time.Now()
 			needTemplates := cCtx.Bool("templates")
 			configsFilePath := cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
@@ -229,6 +230,7 @@ func main() {
 
 				doEvaluate(configs)
 			}
+			log.Printf("执行评估完成，总耗时: %s\n", time.Since(start))
 			return nil
 		},
 	}
@@ -311,15 +313,15 @@ func doEvaluate(configs *Configs) {
 
 			// 多轮对话 id 取最后一个
 			var id, answer, debugInfo string
-			var duration, totalDuration, evaluationDuration time.Duration
+			var duration, totalDuration, evaluationDuration int64
 			var chatHistory []Message
 			for _, q := range questions {
 				// 调用候选模型作答
 				id, answer, duration, err = callChatAPI(candidateModel, true, q, chatHistory)
-				debugInfo += fmt.Sprintf("[%s] %s (%v) ", id, duration, err)
+				debugInfo += fmt.Sprintf("[%s] %d (%v) ", id, duration, err)
 				totalDuration += duration
 				if err != nil {
-					log.Printf("%s 模型调用失败: %v\n", candidateModel.Model, err)
+					log.Printf("%s 候选模型调用失败: %v\n", candidateModel.Model, err)
 					continue
 				}
 				answer = cleanThinkOfDeepSeek(answer)
@@ -358,25 +360,30 @@ func doEvaluate(configs *Configs) {
 			} else {
 				// 调用评估模型
 				evaId, scoreWithReason, duration, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
-				debugInfo += fmt.Sprintf("[%s] %s (%v) ", evaId, duration, err)
+				debugInfo += fmt.Sprintf("[%s] %d (%v) ", evaId, duration, err)
 				evaluationDuration = duration
+				if err != nil {
+					log.Printf("%s 评估模型调用失败: %v\n", evaluatorModel.Model, err)
+					return
+				}
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
 				var result map[string]string
 				err = json.Unmarshal([]byte(scoreWithReason), &result)
-				score = result["score"]
-				reason = result["reason"]
 				if err != nil {
-					log.Printf("%s 模型调用失败: %v\n", evaluatorModel.Model, err)
-					return
+					log.Printf("解析评估结果失败！\n%s%v\n", scoreWithReason, err)
+					debugInfo += fmt.Sprintf("解析 JSON 字符串 %s 失败 (%v) ", scoreWithReason, err)
+				} else {
+					score = result["score"]
+					reason = result["reason"]
 				}
 			}
 
 			log.Printf("[DEBUG] %s", debugInfo)
 			if debugEnabled {
 				// debug 模式增加三列输出：问答耗时、评估耗时、debug 信息
-				debugInfo = fmt.Sprintf(",%s,%s,%s", totalDuration, evaluationDuration, toOneCell(debugInfo))
+				debugInfo = fmt.Sprintf(",%d,%d,%s", totalDuration, evaluationDuration, toOneCell(debugInfo))
 			} else {
 				debugInfo = ""
 			}
@@ -408,7 +415,7 @@ func doEvaluate(configs *Configs) {
 	writer := bufio.NewWriter(outputFile)
 	debugTitle := ""
 	if debugEnabled {
-		debugTitle = ",answer_duration,evaluation_duration,debug_info"
+		debugTitle = ",answer_duration(ms),evaluation_duration(ms),debug_info"
 	}
 	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason%s\n", strings.Join(qa[0], ","), debugTitle))
 	if err != nil {
@@ -451,7 +458,7 @@ func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
 	return prompt
 }
 
-func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, time.Duration, error) {
+func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, int64, error) {
 	log.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
 	messages := make([]Message, len(history)+1)
 	messages = append(history, Message{Role: "user", Content: userPrompt})
@@ -492,7 +499,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
-		return "", "", time.Since(start), fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		return "", "", time.Since(start).Milliseconds(), fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
 	var id, content string
@@ -532,7 +539,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	log.Printf("\n%s model input (%s):\n%s\n", model.Model, id, userPrompt)
 	log.Printf("\n%s model output (%s):\n%s\n", model.Model, id, content)
 	log.Printf("\n%s model (%s) call duration %v (%s start) \n", model.Model, id, duration, start)
-	return id, content, duration, nil
+	return id, content, duration.Milliseconds(), nil
 }
 
 // doRequestWithRetry 执行 HTTP 请求并支持重试机制
@@ -571,12 +578,10 @@ func cleanThinkOfDeepSeek(content string) string {
 }
 
 func cleanMarkdownJsonSymbolIfNeeded(content string) string {
-	idx := strings.Index(content, "```json")
-	if idx > -1 {
-		content = content[idx+7:]
-	}
-	if strings.HasSuffix(content, "```") {
-		content = content[:len(content)-3]
+	startIdx := strings.Index(content, "```json")
+	endIdx := strings.LastIndex(content, "```")
+	if startIdx > -1 && endIdx > -1 {
+		content = content[startIdx+7 : endIdx]
 	}
 	return content
 }
