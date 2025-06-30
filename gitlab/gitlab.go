@@ -347,7 +347,7 @@ func doRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var err error
 
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 	for i := 0; i < maxRetries; i++ {
 		resp, err = client.Do(req)
