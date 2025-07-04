@@ -431,8 +431,12 @@ func doEvaluate(configs *Configs) {
 	if err != nil {
 		log.Fatalf("写入文件失败: %v", err)
 	}
+	lineBreaks := "\n"
+	if runtime.GOOS == "windows" {
+		lineBreaks = "\r\n"
+	}
 	for result := range results {
-		_, err = writer.WriteString(result + "\n")
+		_, err = writer.WriteString(result + lineBreaks)
 		if err != nil {
 			log.Fatalf("写入文件失败: %v", err)
 		}
@@ -452,7 +456,7 @@ func toOneCells(contents []string) []string {
 }
 
 func toOneCell(content string) string {
-	if strings.Contains(content, ",") || strings.Contains(content, "\n") {
+	if strings.Contains(content, ",") || strings.Contains(content, "\r\n") || strings.Contains(content, "\n") {
 		content = fmt.Sprintf("\"%s\"", strings.ReplaceAll(strings.TrimSpace(content), "\"", "\"\""))
 	}
 	return content
