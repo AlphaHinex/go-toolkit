@@ -229,8 +229,13 @@ func main() {
 				backupConfigsToOutputFolder(configs, outputFolder)
 
 				doEvaluate(configs)
+				duration := time.Since(start)
+				log.Printf("完成评估，总耗时: %s\n", duration)
+				oldFileName := fmt.Sprintf("%s_evaluate_result_p%d_s%.2f", prefix, parallel, samplingRate)
+				newFileName := fmt.Sprintf("%s_t%s", oldFileName, duration)
+				_ = os.Rename(fmt.Sprintf("%s.csv", oldFileName), fmt.Sprintf("%s.csv", newFileName))
+				log.Printf("已将 %s.csv 重命名为 %s.csv ，其中 p 为并发数；s 为采样率；t 为总耗时", oldFileName, newFileName)
 			}
-			log.Printf("完成评估，总耗时: %s\n", time.Since(start))
 			return nil
 		},
 	}
@@ -405,7 +410,7 @@ func doEvaluate(configs *Configs) {
 	}()
 
 	// 将 channel 中的内容写入文件
-	outputFilePath := fmt.Sprintf("%s_evaluate_result.csv", prefix)
+	outputFilePath := fmt.Sprintf("%s_evaluate_result_p%d_s%.2f.csv", prefix, parallel, samplingRate)
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		log.Fatalf("创建输出文件失败: %v", err)
