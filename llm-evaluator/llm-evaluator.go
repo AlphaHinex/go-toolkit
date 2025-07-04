@@ -9,11 +9,12 @@ import (
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
 	"io"
-	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,26 +24,25 @@ import (
 var evaluatorPrompt = `
     ## 目标
     
-    请根据问题和标准答案，评估回答的内容与标准答案中内容是否存在本质上的区别，并给出评估依据。以 json 结构返回评估结果，score 代表得分，reason 代表原因。
+    请根据问题和标准答案，评估回答的内容与标准答案中内容是否在语义上一致（如缺少标准答案中的某些信息，或存在标准答案中没有的内容等，均视为语义不一致），并给出评估依据。
+    以 json 结构返回评估结果，score 代表得分，reason 代表原因。
     无区别 score 为 1，有区别为 0，不确定为 -1。
-    
+
     ## 返回结构示例
-    
+
     {"score":"1", "reason":"给出评分依据"}
-    
-    ## 评估内容 
-    
-    ### 问题: 
-    
+
+    <问题>
     {question}
-    
-    ### 标准答案: 
-    
+    </问题>
+
+    <标准答案>
     {expectedAnswer}
-    
-    ### 回答: 
-    
+    </标准答案>
+
+    <回答>
     {answer}
+    </回答>
 `
 
 var configsTemplate = fmt.Sprintf(`
@@ -91,15 +91,75 @@ langfuse:
   score-name: llm-evaluator
 `, evaluatorPrompt)
 
+var inputCsvTemplate = `question,expected-answer,standard
+什么原因会导致邮件被退回？,邮件被退回是指你发送的邮件无法被送达到收件人的邮箱。邮件被退回的原因有很多，包括：\n1. 无效的邮箱地址：你输入的邮箱地址可能无效或者有拼写错误，这会导致邮件无法被送达。\n2. 收件人邮箱已满：如果收件人的邮箱已经满了，邮件就会被退回到发件人的邮箱。\n3. 服务器问题：如果收件人的邮箱服务器出现问题或者宕机，邮件就无法被送达并会被退回到发件人的邮箱。\n4. 垃圾邮件过滤器：如果你的邮件被标记为垃圾邮件或者包含某些触发垃圾邮件过滤器的关键词或短语，邮件就会被屏蔽并退回到发件人的邮箱。\n5. 发件人被屏蔽：如果收件人已经屏蔽了你的邮箱地址，你的邮件就会被退回。\n\n为了避免邮件被退回，重要的是要确保邮箱地址正确，收件人的邮箱没有满，以及你的邮件没有被标记为垃圾邮件。你也可以与收件人核实是否收到了邮件，以及他们的邮箱服务器或垃圾邮件过滤器是否有问题。,=
+给我写一个垂直轮播的代码，用于我的落地页。,"很抱歉，作为一个AI语言模型，我无法访问您的落地页代码，也不知道您使用的编程语言。但是，我可以给您提供使用HTML、CSS和JavaScript创建垂直轮播的一般思路。\n\n以下是一个示例：\n\nHTML：\n` + "```" + `\nhtml<div class=""carousel"">\n  <div class=""carousel-inner"">\n    <div class=""carousel-item active"">\n      <img src=""image1.jpg"" alt=""Image 1"">\n    </div>\n    <div class=""carousel-item"">\n      <img src=""image2.jpg"" alt=""Image 2"">\n    </div>\n    <div class=""carousel-item"">\n      <img src=""image3.jpg"" alt=""Image 3"">\n    </div>\n  </div>\n</div>\n` + "```" + `\nCSS：\n` + "```" + `css\n.carousel {\n  position: relative;\n  width: 100%;\n  height: 500px; /* 设置轮播的高度 */\n  overflow: hidden;\n}\n.carousel-inner {\n  position: absolute;\n  top: 0;\n  left: 0;\n  height: 100%;\n  width: 100%;\n  display: flex;\n  flex-direction: column;\n  transition: transform 0.6s ease-in-out;\n}\n.carousel-item {\n  flex: 1 0 auto;\n  position: relative;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n}\n.carousel-item img {\n  height: 100%;\n  width: 100%;\n  object-fit: cover;\n}\n` + "```" + `\nJavaScript：\n` + "```" + `javascript\nlet slideIndex = 1;\nshowSlides(slideIndex);\nfunction plusSlides(n) {\n  showSlides(slideIndex += n);\n}\nfunction showSlides(n) {\n  let i;\n  let slides = document.getElementsByClassName(""carousel-item"");\n  if (n > slides.length) {slideIndex = 1}\n  if (n < 1) {slideIndex = slides.length}\n  for (i = 0; i < slides.length; i++) {\n      slides[i].style.transform = ""translateY("" + ((i-slideIndex+1)*100) + ""%)"";\n  }\n}\n` + "```" + `\n在HTML中，具有“carousel”类的“div”是轮播的容器。在此容器内部是另一个具有“carousel-inner”类的“div”，它将包含单个轮播项，每个项都包装在具有“carousel-item”类的“div”中。CSS设置轮播的高度，隐藏任何溢出，并使用flexbox垂直排列项。JavaScript将初始幻灯片索引设置为1，并定义“showSlides”函数，该函数接受一个参数“n”，表示要显示的幻灯片。 “plusSlides”函数通过参数“n”更新幻灯片索引并调用“showSlides”。在“showSlides”中，当前幻灯片垂直翻译到轮播容器的顶部，而其他幻灯片则翻译到其下方。\n\n这只是创建垂直轮播的一种示例。您可能需要修改代码以适应您特定的用例和偏好。",%
+"[
+    {
+        ""role"": ""user"",
+        ""content"": ""大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""在英国，大多数人在网上搜索什么类型的地板？""
+    }
+]","[
+    {
+        ""role"": ""user"",
+        ""content"": ""大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""当涉及到地板时，很难说大多数人在网上搜索什么类型的地板，因为这取决于地理位置、个人喜好和当前的趋势。一些经常在网上搜索的受欢迎的地板类型包括实木、强化木地板、瓷砖、地毯和乙烯基。""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""在英国，大多数人在网上搜索什么类型的地板？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""很难准确地说英国大多数人在网上搜索什么类型的地板，因为这取决于地理位置、个人喜好和当前的趋势。然而，在英国，一些经常在网上搜索的受欢迎的地板类型包括：\n* 地毯\n* 强化木地板\n* 实木\n* 乙烯基\n* 瓷砖（如陶瓷或瓷砖）\n* 工程木\n* 豪华乙烯基瓷砖（LVT）\n* 天然石材\n需要注意的是，某些类型的地板的受欢迎程度会随着时间的推移而改变，因此最好定期检查搜索数据和趋势以保持最新。""
+    }
+]",%
+"[
+    {
+        ""role"": ""user"",
+        ""content"": ""AI中的N-Tile问题？""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""上述的启发式算法""
+    }
+]","[
+    {
+        ""role"": ""user"",
+        ""content"": ""AI中的N-Tile问题？""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""AI中的N-Tile问题是将一组项目分成N个子集，使得每个子集尽可能相似的问题。该问题通常用于机器学习中将数据集分成训练、验证和测试集，或将人口分组进行研究。该问题可以使用各种优化算法解决，例如线性规划或遗传算法。要优化的目标函数通常是子集的方差或熵的总和。""
+    },
+    {
+        ""role"": ""user"",
+        ""content"": ""上述的启发式算法""
+    },
+    {
+        ""role"": ""assistant"",
+        ""content"": ""有几种启发式算法可用于解决N-Tile问题。其中一些最常见的包括：\n1. 随机抽样：这涉及从集合中随机选择项目并将其放入子集中。这是一种简单快速的方法，但可能不会导致最优解。\n2. K-means聚类：这涉及根据其特征对项目进行聚类，然后将聚类分成子集。\n3. 遗传算法：这涉及使用遗传算法演化解决方案的种群，其中每个解决方案表示将项目划分为子集的可能性。\n4. 贪心算法：这涉及从空子集开始，反复添加最大程度减少子集方差的下一个项目。\n5. 局部搜索：这涉及从初始随机解开始，反复对子集进行小的更改，以尝试改善目标函数。\n6. 分而治之：这涉及将项目集递归地划分为越来越小的子集，直到每个子集仅包含一个项目。\n启发式算法的选择取决于特定的用例和可用资源。""
+    }
+]",%`
+
 var outputFolder = ""
 var parallel = 0
 var prefix = ""
+var samplingRate = 1.0
+var debugEnabled = false
 
 func main() {
 	app := &cli.App{
 		Name:    "llm-evaluator",
 		Usage:   "Evaluate QA capability of LLM model with LLM model.",
-		Version: "v2.5.0",
+		Version: "v2.5.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "configs",
@@ -111,7 +171,7 @@ func main() {
 			&cli.BoolFlag{
 				Name:     "templates",
 				Aliases:  []string{"t"},
-				Usage:    "Generate template files of configs.yaml in current path.",
+				Usage:    "Generate template files of configs.yaml (and input csv example) in current path.",
 				Value:    false,
 				Required: false,
 			},
@@ -122,18 +182,45 @@ func main() {
 				Value:    1,
 				Required: false,
 			},
+			&cli.Float64Flag{
+				Name:     "sampling-rate",
+				Aliases:  []string{"r"},
+				Usage:    "Sampling rate of all questions. 0.8 means 80% of questions will be sampled for evaluation. 1.0 means all questions will be evaluated",
+				Value:    1.0,
+				Required: false,
+			},
+			&cli.BoolFlag{
+				Name:     "debug",
+				Aliases:  []string{"d"},
+				Usage:    "Enable debug mode, which will write more debug info into evaluation result file. Default is false.",
+				Value:    false,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			start := time.Now()
 			needTemplates := cCtx.Bool("templates")
 			configsFilePath := cCtx.String("configs")
 			parallel = cCtx.Int("parallel")
+			samplingRate = cCtx.Float64("sampling-rate")
+			debugEnabled = cCtx.Bool("debug")
 
 			if needTemplates {
+				if runtime.GOOS == "windows" {
+					configsTemplate = strings.ReplaceAll(configsTemplate, "\n", "\r\n")
+					inputCsvTemplate = strings.ReplaceAll(inputCsvTemplate, "\n", "\r\n")
+				}
 				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
 				if err != nil {
-					log.Fatalf("生成模板文件失败: %v", err)
+					log.Fatalf("生成配置文件模板失败: %v", err)
 				} else {
-					log.Println("生成模板文件成功！")
+					log.Println("生成配置文件模板成功！")
+				}
+				err = os.WriteFile("input.csv_template", []byte(strings.TrimSpace(inputCsvTemplate)), 0644)
+				if err != nil {
+					log.Fatalf("生成 CSV 文件模板失败: %v", err)
+				} else {
+					log.Println("生成 CSV 文件模板成功！")
 				}
 			} else {
 				configs := readConfigs(configsFilePath)
@@ -146,6 +233,12 @@ func main() {
 				backupConfigsToOutputFolder(configs, outputFolder)
 
 				doEvaluate(configs)
+				duration := time.Since(start)
+				log.Printf("完成评估，总耗时: %s\n", duration)
+				oldFileName := fmt.Sprintf("%s_evaluate_result_p%d_s%.2f", prefix, parallel, samplingRate)
+				newFileName := fmt.Sprintf("%s_t%s", oldFileName, duration)
+				_ = os.Rename(fmt.Sprintf("%s.csv", oldFileName), fmt.Sprintf("%s.csv", newFileName))
+				log.Printf("已将 %s.csv 重命名为 %s.csv ，其中 p 为并发数；s 为采样率；t 为总耗时", oldFileName, newFileName)
 			}
 			return nil
 		},
@@ -179,15 +272,31 @@ func doEvaluate(configs *Configs) {
 	candidateModel := configs.Model.Candidate
 	evaluatorModel := configs.Model.Evaluator
 
-	// 定义 channel
+	// 定义存放评估结果的 channel
 	results := make(chan string)
 	// 定义一个带缓冲的 channel 作为信号量
 	semaphore := make(chan struct{}, parallel) // parallel 是并发限制数量
 
+	// 如果采样率小于 1.0，则随机采样
+	rand.Seed(time.Now().UnixNano())
+	if samplingRate < 1.0 {
+		sampledQA := [][]string{qa[0]} // 保留表头
+		for _, record := range qa[1:] {
+			// Always add the first data into sampled result to ensure that at least one piece of data remains available in extreme situations.
+			if len(sampledQA) == 1 || (samplingRate > 0 && rand.Float64() < samplingRate) {
+				sampledQA = append(sampledQA, record)
+			}
+		}
+		qa = sampledQA
+		log.Printf("采样后问题数量: %d\n", len(qa)-1)
+	} else {
+		log.Printf("未进行采样，问题数量: %d\n", len(qa)-1)
+	}
+
 	var wg sync.WaitGroup
 	for _, record := range qa[1:] { // 跳过表头
 		wg.Add(1)
-		go func(record []string) {
+		go func(oneLine []string) {
 			defer wg.Done()
 
 			// 占用一个并发槽
@@ -195,8 +304,11 @@ func doEvaluate(configs *Configs) {
 			defer func() { <-semaphore }() // 释放并发槽
 
 			// 获取问题和标准答案
-			question := record[qIndex]
-			expectedAnswer := record[aIndex]
+			question := oneLine[qIndex]
+			if len(strings.TrimSpace(question)) == 0 {
+				return
+			}
+			expectedAnswer := oneLine[aIndex]
 
 			var questions []string
 			chatMessages, err := parseChatMessages(question)
@@ -211,13 +323,16 @@ func doEvaluate(configs *Configs) {
 			}
 
 			// 多轮对话 id 取最后一个
-			var id, answer string
+			var id, answer, debugInfo string
+			var duration, totalDuration, evaluationDuration int64
 			var chatHistory []Message
 			for _, q := range questions {
 				// 调用候选模型作答
-				id, answer, err = callChatAPI(candidateModel, true, q, chatHistory)
+				id, answer, duration, err = callChatAPI(candidateModel, true, q, chatHistory)
+				debugInfo += fmt.Sprintf("[%s] %d (%v) ", id, duration, err)
+				totalDuration += duration
 				if err != nil {
-					log.Printf("%s 模型调用失败: %v\n", candidateModel.Model, err)
+					log.Printf("%s 候选模型调用失败: %v\n", candidateModel.Model, err)
 					continue
 				}
 				answer = cleanThinkOfDeepSeek(answer)
@@ -244,7 +359,7 @@ func doEvaluate(configs *Configs) {
 
 			score := ""
 			reason := ""
-			if sIndex > 0 && record[sIndex] == "=" {
+			if sIndex > 0 && oneLine[sIndex] == "=" {
 				// 判断 answer 与 expectedAnswer 是否完全一致
 				if strings.TrimSpace(answer) == strings.TrimSpace(expectedAnswer) {
 					score = "1"
@@ -255,20 +370,35 @@ func doEvaluate(configs *Configs) {
 				}
 			} else {
 				// 调用评估模型
-				_, scoreWithReason, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
+				evaId, scoreWithReason, duration, err := callChatAPI(evaluatorModel, true, getEvaluatePrompt(configs.Prompt.Evaluator, question, answer, expectedAnswer), nil)
+				debugInfo += fmt.Sprintf("[%s] %d (%v) ", evaId, duration, err)
+				evaluationDuration = duration
+				if err != nil {
+					log.Printf("%s 评估模型调用失败: %v\n", evaluatorModel.Model, err)
+					return
+				}
 				scoreWithReason = cleanThinkOfDeepSeek(scoreWithReason)
 				scoreWithReason = cleanMarkdownJsonSymbolIfNeeded(scoreWithReason)
 				// 将 scoreWithReason 转成 json
-				var result map[string]string
+				var result map[string]interface{}
 				err = json.Unmarshal([]byte(scoreWithReason), &result)
-				score = result["score"]
-				reason = result["reason"]
 				if err != nil {
-					log.Printf("%s 模型调用失败: %v\n", evaluatorModel.Model, err)
-					return
+					log.Printf("解析评估结果失败！\n%s%v\n", scoreWithReason, err)
+					debugInfo += fmt.Sprintf("解析 JSON 字符串 %s 失败 (%v) ", scoreWithReason, err)
+				} else {
+					score = fmt.Sprint(result["score"])
+					reason = fmt.Sprint(result["reason"])
 				}
 			}
-			results <- fmt.Sprintf("%s,%s,%s,%s", strings.Join(toOneCells(record), ","), toOneCell(answer), toOneCell(score), toOneCell(reason))
+
+			log.Printf("[DEBUG] %s", debugInfo)
+			if debugEnabled {
+				// debug 模式增加三列输出：问答耗时、评估耗时、debug 信息
+				debugInfo = fmt.Sprintf(",%d,%d,%s", totalDuration, evaluationDuration, toOneCell(debugInfo))
+			} else {
+				debugInfo = ""
+			}
+			results <- fmt.Sprintf("%s,%s,%s,%s%s", strings.Join(toOneCells(oneLine), ","), toOneCell(answer), toOneCell(score), toOneCell(reason), debugInfo)
 			if configs.Langfuse.Enable {
 				wg.Add(1)
 				go func() {
@@ -286,7 +416,7 @@ func doEvaluate(configs *Configs) {
 	}()
 
 	// 将 channel 中的内容写入文件
-	outputFilePath := fmt.Sprintf("%s_evaluate_result.csv", prefix)
+	outputFilePath := fmt.Sprintf("%s_evaluate_result_p%d_s%.2f.csv", prefix, parallel, samplingRate)
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		log.Fatalf("创建输出文件失败: %v", err)
@@ -294,12 +424,20 @@ func doEvaluate(configs *Configs) {
 	defer outputFile.Close()
 
 	writer := bufio.NewWriter(outputFile)
-	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason\n", strings.Join(qa[0], ",")))
+	debugTitle := ""
+	if debugEnabled {
+		debugTitle = ",answer_duration(ms),evaluation_duration(ms),debug_info"
+	}
+	lineBreaks := "\n"
+	if runtime.GOOS == "windows" {
+		lineBreaks = "\r\n"
+	}
+	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason%s%s", strings.Join(qa[0], ","), debugTitle, lineBreaks))
 	if err != nil {
 		log.Fatalf("写入文件失败: %v", err)
 	}
 	for result := range results {
-		_, err = writer.WriteString(result + "\n")
+		_, err = writer.WriteString(result + lineBreaks)
 		if err != nil {
 			log.Fatalf("写入文件失败: %v", err)
 		}
@@ -319,7 +457,7 @@ func toOneCells(contents []string) []string {
 }
 
 func toOneCell(content string) string {
-	if strings.Contains(content, ",") || strings.Contains(content, "\n") {
+	if strings.Contains(content, ",") || strings.Contains(content, "\r\n") || strings.Contains(content, "\n") {
 		content = fmt.Sprintf("\"%s\"", strings.ReplaceAll(strings.TrimSpace(content), "\"", "\"\""))
 	}
 	return content
@@ -335,10 +473,9 @@ func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
 	return prompt
 }
 
-func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, error) {
+func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, int64, error) {
 	log.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
-	messages := make([]Message, len(history)+1)
-	messages = append(history, Message{Role: "user", Content: userPrompt})
+	messages := append(history, Message{Role: "user", Content: userPrompt})
 
 	body := map[string]interface{}{
 		"user":        "llm-evaluator",
@@ -353,7 +490,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		log.Panicf("序列化请求体失败: %v", err)
+		log.Fatalf("序列化请求体失败: %v", err)
 	}
 
 	client := &http.Client{
@@ -361,7 +498,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	}
 	req, err := http.NewRequest("POST", model.Endpoint+"/v1/chat/completions", bytes.NewReader(jsonBody))
 	if err != nil {
-		log.Panicf("创建请求失败: %v", err)
+		log.Fatalf("创建请求失败: %v", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+model.ApiKey)
@@ -370,13 +507,13 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	start := time.Now()                                                      // 记录开始时间
 	resp, err := doRequestWithRetry(req, client, jsonBody, 3, 2*time.Second) // 重试 3 次，每次重试等待递增间隔 2 秒
 	if err != nil {
-		log.Panicf("发送请求失败: %v", err)
+		log.Fatalf("发送请求失败: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return "", "", fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		body, _ := io.ReadAll(resp.Body)
+		return "", "", time.Since(start).Milliseconds(), fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
 	var id, content string
@@ -393,7 +530,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 				var apiResp StreamingAPIResponse
 				err := json.Unmarshal([]byte(jsonStr), &apiResp)
 				if err != nil {
-					log.Panicf("解析响应失败: %v", err)
+					log.Fatalf("解析响应失败: %v", err)
 				}
 				if len(apiResp.Choices) > 0 {
 					content += apiResp.Choices[0].Delta.Content
@@ -405,7 +542,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		var apiResp BlockingAPIResponse
 		err := json.NewDecoder(resp.Body).Decode(&apiResp)
 		if err != nil {
-			log.Panicf("解析响应失败: %v", err)
+			log.Fatalf("解析响应失败: %v", err)
 		}
 		if len(apiResp.Choices) > 0 {
 			content = apiResp.Choices[0].Message.Content
@@ -413,9 +550,10 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 		}
 	}
 	duration := time.Since(start) // 计算调用时长
-	log.Printf("\n模型输出（%s）：\n%s\n", id, content)
-	log.Printf("\n调用耗时 %v (%s start) \n", duration, start)
-	return id, content, nil
+	log.Printf("\n%s model input (%s):\n%s\n", model.Model, id, userPrompt)
+	log.Printf("\n%s model output (%s):\n%s\n", model.Model, id, content)
+	log.Printf("\n%s model (%s) call duration %v (%s start) \n", model.Model, id, duration, start)
+	return id, content, duration.Milliseconds(), nil
 }
 
 // doRequestWithRetry 执行 HTTP 请求并支持重试机制
@@ -426,12 +564,15 @@ func doRequestWithRetry(req *http.Request, client *http.Client, requestBody []by
 	for i := 0; i <= maxRetries; i++ {
 		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
+			if i > 0 {
+				log.Printf("%s 请求第 %d 次成功.\n请求体：\n%s\n", req.URL, i+1, requestBody)
+			}
 			return resp, nil
 		}
 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
-			log.Printf("%s 请求失败，稍后第 %d 次重试...\n请求体：\n%s\n错误信息：\n%v\n", req.RequestURI, i+1, requestBody, err)
+			log.Printf("%s 请求失败，稍后第 %d 次重试...\n请求体：\n%s\n错误信息：\n%v\n", req.URL, i+1, requestBody, err)
 			time.Sleep(time.Duration(i) * retryDelay)
 			req.Body = io.NopCloser(bytes.NewReader(requestBody)) // 重置请求体
 		}
@@ -451,12 +592,10 @@ func cleanThinkOfDeepSeek(content string) string {
 }
 
 func cleanMarkdownJsonSymbolIfNeeded(content string) string {
-	idx := strings.Index(content, "```json")
-	if idx > -1 {
-		content = content[idx+7:]
-	}
-	if strings.HasSuffix(content, "```") {
-		content = content[:len(content)-3]
+	startIdx := strings.Index(content, "```json")
+	endIdx := strings.LastIndex(content, "```")
+	if startIdx > -1 && endIdx > -1 {
+		content = content[startIdx+7 : endIdx]
 	}
 	return content
 }

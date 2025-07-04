@@ -30,7 +30,7 @@ func main() {
 	app := &cli.App{
 		Name:    "gitlab",
 		Usage:   "Use GitLab API to analyse commits",
-		Version: "v2.5.0",
+		Version: "v2.5.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "url",
@@ -347,7 +347,7 @@ func doRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var err error
 
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 	for i := 0; i < maxRetries; i++ {
 		resp, err = client.Do(req)

@@ -39,7 +39,7 @@ func main() {
 	app := &cli.App{
 		Name:    "sonar-exp",
 		Usage:   "Export sonar projects info into csv",
-		Version: "v2.5.0",
+		Version: "v2.5.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "host",
