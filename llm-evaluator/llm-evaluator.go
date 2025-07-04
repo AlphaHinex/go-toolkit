@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -206,6 +207,10 @@ func main() {
 			debugEnabled = cCtx.Bool("debug")
 
 			if needTemplates {
+				if runtime.GOOS == "windows" {
+					configsTemplate = strings.ReplaceAll(configsTemplate, "\n", "\r\n")
+					inputCsvTemplate = strings.ReplaceAll(inputCsvTemplate, "\n", "\r\n")
+				}
 				err := os.WriteFile("configs.yaml_template", []byte(strings.TrimSpace(configsTemplate)), 0644)
 				if err != nil {
 					log.Fatalf("生成配置文件模板失败: %v", err)
