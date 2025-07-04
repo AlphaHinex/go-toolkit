@@ -282,6 +282,7 @@ func doEvaluate(configs *Configs) {
 	if samplingRate < 1.0 {
 		sampledQA := [][]string{qa[0]} // 保留表头
 		for _, record := range qa[1:] {
+			// Always add the first data into sampled result to ensure that at least one piece of data remains available in extreme situations.
 			if len(sampledQA) == 1 || (samplingRate > 0 && rand.Float64() < samplingRate) {
 				sampledQA = append(sampledQA, record)
 			}
@@ -427,13 +428,13 @@ func doEvaluate(configs *Configs) {
 	if debugEnabled {
 		debugTitle = ",answer_duration(ms),evaluation_duration(ms),debug_info"
 	}
-	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason%s\n", strings.Join(qa[0], ","), debugTitle))
-	if err != nil {
-		log.Fatalf("写入文件失败: %v", err)
-	}
 	lineBreaks := "\n"
 	if runtime.GOOS == "windows" {
 		lineBreaks = "\r\n"
+	}
+	_, err = writer.WriteString(fmt.Sprintf("%s,answer,score,reason%s%s", strings.Join(qa[0], ","), debugTitle, lineBreaks))
+	if err != nil {
+		log.Fatalf("写入文件失败: %v", err)
 	}
 	for result := range results {
 		_, err = writer.WriteString(result + lineBreaks)
@@ -474,8 +475,7 @@ func getEvaluatePrompt(prompt, question, answer, expectedAnswer string) string {
 
 func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []Message) (string, string, int64, error) {
 	log.Printf("调用模型 %s %s，温度 %.2f，流式: %t\n", model.Endpoint, model.Model, model.Temperature, isStream)
-	messages := make([]Message, len(history)+1)
-	messages = append(history, Message{Role: "user", Content: userPrompt})
+	messages := append(history, Message{Role: "user", Content: userPrompt})
 
 	body := map[string]interface{}{
 		"user":        "llm-evaluator",
