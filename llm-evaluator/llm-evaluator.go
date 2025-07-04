@@ -9,7 +9,6 @@ import (
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -279,6 +278,7 @@ func doEvaluate(configs *Configs) {
 	semaphore := make(chan struct{}, parallel) // parallel 是并发限制数量
 
 	// 如果采样率小于 1.0，则随机采样
+	rand.Seed(time.Now().UnixNano())
 	if samplingRate < 1.0 {
 		sampledQA := [][]string{qa[0]} // 保留表头
 		for _, record := range qa[1:] {
@@ -512,7 +512,7 @@ func callChatAPI(model ModelConfig, isStream bool, userPrompt string, history []
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return "", "", time.Since(start).Milliseconds(), fmt.Errorf("API返回错误状态码: %d, 响应: %s", resp.StatusCode, string(body))
 	}
 
