@@ -67,7 +67,7 @@ func main() {
 				message.WriteString(prettyPrint(fund))
 			}
 			if configs.Token.Lark != "" {
-				sendToFeishu(configs.Token.Lark, message.String())
+				sendToFeishu(configs.Token.Lark, strings.TrimSpace(message.String()))
 			}
 
 			return nil
@@ -143,13 +143,13 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 	return &e
 }
 
-// 涨跌幅格式
+// 添加涨跌符号
 func upOrDown(value string) string {
 	v, _ := strconv.ParseFloat(value, 64)
 	if v > 0 {
-		return fmt.Sprintf("%.2f%% ▲", v)
+		return fmt.Sprintf("🔺%.2f%%", v)
 	}
-	return fmt.Sprintf("%.2f%% ▼", v)
+	return fmt.Sprintf("▼ %.2f%%", v)
 }
 
 func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
@@ -216,19 +216,31 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	return result, ""
 }
 
+// 美化输出，示例如下：
+// 008099|广发价值领先混合A
+// 成本：1.5258
+// 估值：1.4914 ▼ -0.32% -2.25% 15:00
+// 净值：1.4969 🔺0.05% -1.89% 2025-08-08
 func prettyPrint(fund Fund) string {
-	title := fmt.Sprintf("%s（成本价：%.4f）\n", fund.Name, fund.Cost)
-	netRow := fmt.Sprintf("估算涨跌幅：%s 估算净值：%s 估算收益率 %s%%（%s）\n",
-		strings.ReplaceAll(upOrDown(fund.Estimate.Gszzl), "▲", "🔺"),
-		fund.Estimate.Gsz,
-		fund.EstimateProfit,
-		fund.Estimate.Gztime)
-	estimateRow := fmt.Sprintf("涨跌幅：%s 净值：%.4f 收益率：%s%%（%s）\n",
-		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
+	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
+	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
+	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
 		fund.NetValue.Value,
+		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
 		fund.NetProfit,
 		fund.NetValue.Date)
-	return title + netRow + estimateRow + "\n"
+	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
+		fund.Estimate.Gsz,
+		upOrDown(fund.Estimate.Gszzl),
+		fund.EstimateProfit,
+		strings.Split(fund.Estimate.Gztime, " ")[1])
+	if verbose {
+		return title + costRow + estimateRow + netRow + "\n"
+	} else if fund.NetValue.Date == strings.Split(fund.Estimate.Gztime, " ")[0] {
+		return title + costRow + netRow + "\n"
+	} else {
+		return title + costRow + estimateRow + "\n"
+	}
 }
 
 // 发送消息到飞书
