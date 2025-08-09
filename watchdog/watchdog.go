@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
@@ -17,26 +18,23 @@ import (
 	"time"
 )
 
-// 全局成本价
-var costs = map[string]float64{}
-
 func main() {
 	app := &cli.App{
 		Name:    "watchdog",
 		Usage:   "Watchdog of fund",
 		Version: "v2.5.1",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:     "verbose",
-				Usage:    "Enable verbose output",
-				Value:    false,
-				Required: false,
-			},
 			&cli.StringFlag{
 				Name:     "config-file",
 				Aliases:  []string{"c"},
 				Usage:    "Path to the config YAML file containing fund costs, tokens, etc.",
 				Required: true,
+			},
+			&cli.BoolFlag{
+				Name:     "verbose",
+				Usage:    "Enable verbose output",
+				Value:    false,
+				Required: false,
 			},
 			&cli.StringFlag{
 				Name:     "lark-webhook-token",
@@ -46,14 +44,18 @@ func main() {
 		},
 		Action: func(cCtx *cli.Context) error {
 			verbose := cCtx.Bool("verbose")
-			larkWebhookToken := cCtx.String("lark-webhook-token")
+			configFilePath := cCtx.String("config-file")
+			configs := readConfigs(configFilePath)
 
+			costs := configs.Funds
 			var message strings.Builder
-			for code := range costs {
-				message.WriteString(watchFund(code, verbose))
+			for code, cost := range costs {
+				message.WriteString(watchFund(code, cost, verbose))
 			}
 
-			sendToFeishu(larkWebhookToken, message.String())
+			if configs.Token.Lark != "" {
+				sendToFeishu(configs.Token.Lark, message.String())
+			}
 
 			return nil
 		},
@@ -64,7 +66,20 @@ func main() {
 	}
 }
 
-func watchFund(fundCode string, verbose bool) string {
+func readConfigs(configsFilePath string) *Config {
+	content, err := os.ReadFile(configsFilePath)
+	if err != nil {
+		log.Panicf("读取配置 %s 失败: %v", configsFilePath, err)
+	}
+	var config Config
+	err = yaml.Unmarshal(content, &config)
+	if err != nil {
+		log.Panicf("解析配置失败: %v", err)
+	}
+	return &config
+}
+
+func watchFund(fundCode string, cost float64, verbose bool) string {
 	// 获取基金净值
 	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}}, false)
 	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
@@ -78,17 +93,12 @@ func watchFund(fundCode string, verbose bool) string {
 		return ""
 	}
 
-	cost, exists := costs[fundCode]
 	var costStr, profitStr string
-	if !exists {
-		costStr = "未设置成本价"
-	} else {
-		netVal, _ := strconv.ParseFloat(netValue, 64)
-		profit := (netVal - cost) / cost * 100
-		costStr = fmt.Sprintf("%.4f", cost)
-		profitStr = fmt.Sprintf("%.2f", profit)
-		profitStr = upOrDown(profitStr)
-	}
+	netVal, _ := strconv.ParseFloat(netValue, 64)
+	profit := (netVal - cost) / cost * 100
+	costStr = fmt.Sprintf("%.4f", cost)
+	profitStr = fmt.Sprintf("%.2f", profit)
+	profitStr = upOrDown(profitStr)
 
 	res := fmt.Sprintf(
 		"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
@@ -235,4 +245,11 @@ type Estimate struct {
 	Gsz    string `json:"gsz"`
 	Gszzl  string `json:"gszzl"`
 	Gztime string `json:"gztime"`
+}
+
+type Config struct {
+	Funds map[string]float64 `yaml:"funds"`
+	Token struct {
+		Lark string `yaml:"lark"`
+	} `yaml:"token"`
 }
