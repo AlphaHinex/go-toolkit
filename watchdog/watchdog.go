@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var verbose bool
@@ -66,8 +67,8 @@ func main() {
 			for _, fund := range funds {
 				message.WriteString(prettyPrint(fund))
 			}
-			if configs.Token.Lark != "" {
-				sendToFeishu(configs.Token.Lark, strings.TrimSpace(message.String()))
+			if configs.Token.Lark != "" && len(strings.TrimSpace(message.String())) > 0 {
+				sendToLark(configs.Token.Lark, strings.TrimSpace(message.String()))
 			}
 
 			return nil
@@ -141,6 +142,24 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 		return nil
 	}
 	return &e
+}
+
+func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue, NetValue) {
+	var min, max NetValue
+	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+		url.Values{"FCODE": {fundCode}, "RANGE": {rangeCode}})
+	for _, data := range res["data"].([]interface{}) {
+		value, _ := strconv.ParseFloat(data.(map[string]interface {})["DWJZ"].(string), 64)
+		if min.Value == 0 || value < min.Value {
+			min.Value = value
+			min.Date = data.(map[string]interface {})["FSRQ"].(string)
+		}
+		if max.Value == 0 || value > max.Value {
+			max.Value = value
+			max.Date = data.(map[string]interface {})["FSRQ"].(string)
+		}
+	}
+	return min, max
 }
 
 // 添加涨跌符号
@@ -221,7 +240,18 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 // 成本：1.5258
 // 估值：1.4914 ▼ -0.32% -2.25% 15:00
 // 净值：1.4969 🔺0.05% -1.89% 2025-08-08
+// 月度：1.4818 → 1.5752
+// 季度：1.4325 → 1.5752
+// 半年：...
+// 一年：...
+// 三年：...
+// 五年：...
+// 成立：...
 func prettyPrint(fund Fund) string {
+	today := time.Now().Format("2006-01-02")
+	if today > fund.NetValue.Date {
+		return ""
+	}
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
 	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
 	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
@@ -234,17 +264,21 @@ func prettyPrint(fund Fund) string {
 		upOrDown(fund.Estimate.Gszzl),
 		fund.EstimateProfit,
 		strings.Split(fund.Estimate.Gztime, " ")[1])
-	if verbose {
-		return title + costRow + estimateRow + netRow + "\n"
-	} else if fund.NetValue.Date == strings.Split(fund.Estimate.Gztime, " ")[0] {
-		return title + costRow + netRow + "\n"
+
+	if fund.NetValue.Date == strings.Split(fund.Estimate.Gztime, " ")[0] {
+		historyRow := ""
+		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
+			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
+			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
+		}
+		return title + costRow + netRow + historyRow + "\n"
 	} else {
 		return title + costRow + estimateRow + "\n"
 	}
 }
 
 // 发送消息到飞书
-func sendToFeishu(larkWebhookToken, msg string) {
+func sendToLark(larkWebhookToken, msg string) {
 	larkWebhook := "https://open.feishu.cn/open-apis/bot/v2/hook/" + larkWebhookToken
 
 	payload := map[string]interface{}{
