@@ -100,9 +100,10 @@ func watchFund(fund *Fund) {
 	// 获取实时估算净值
 	estimate := getFundRealtimeEstimate(fund.Code)
 	fund.Estimate = *estimate
-	// 计算净值收益率
-	profit := (netValue.Value - fund.Cost) / fund.Cost * 100
-	fund.Profit = fmt.Sprintf("%.2f", profit)
+	// 计算收益率
+	fund.NetProfit = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
+	estimateValue, _ := strconv.ParseFloat(estimate.Gsz, 64)
+	fund.EstimateProfit = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
 
 	//res := fmt.Sprintf(
 	//	"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
@@ -126,7 +127,7 @@ func getFundNetValue(fundCode string) (string, *NetValue) {
 	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
 	netValue.Value, _ = strconv.ParseFloat(netValueRes["NAV"].(string), 64)
 	netValue.Date = netValueRes["PDATE"].(string)
-	netValue.Margin = netValueRes["NAVCHGRT"].(string) + "%"
+	netValue.Margin, _ = strconv.ParseFloat(netValueRes["NAVCHGRT"].(string), 64)
 	return netValueRes["SHORTNAME"].(string), &netValue
 }
 
@@ -151,6 +152,7 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 
 	var e Estimate
 	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
+		panic(err.Error())
 		return nil
 	}
 	return &e
@@ -257,13 +259,14 @@ type Config struct {
 }
 
 type Fund struct {
-	Code     string   // 基金代码
-	Name     string   // 基金名称
-	Cost     float64  // 基金成本价
-	NetValue NetValue // 基金净值
-	Profit   string   // 基金收益率
-	Estimate Estimate // 实时估算净值
-	Hint     string   // 提示信息
+	Code           string   // 基金代码
+	Name           string   // 基金名称
+	Cost           float64  // 基金成本价
+	NetValue       NetValue // 基金净值
+	NetProfit      string   // 基金净值收益率
+	Estimate       Estimate // 实时估算净值
+	EstimateProfit string   // 实时估算净值收益率
+	Hint           string   // 提示信息
 }
 
 // Estimate 实时估值结构体
@@ -275,6 +278,6 @@ type Estimate struct {
 
 type NetValue struct {
 	Value  float64 // 净值
+	Margin float64 // 净值涨跌幅百分比
 	Date   string  // 净值日期
-	Margin string  // 净值涨跌幅百分比
 }
