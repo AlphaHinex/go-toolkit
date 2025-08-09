@@ -94,32 +94,15 @@ func readConfigs(configsFilePath string) *Config {
 
 func watchFund(fund *Fund) {
 	// 获取基金净值
-	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fund.Code}})
-	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
-	netValue := netValueRes["NAV"].(string)
-	pDate := netValueRes["PDATE"].(string)
-	navChgRt := netValueRes["NAVCHGRT"].(string)
-
+	name, netValue := getFundNetValue(fund.Code)
+	fund.Name = name
+	fund.NetValue = *netValue
 	// 获取实时估算净值
 	estimate := getFundRealtimeEstimate(fund.Code)
-	if estimate == nil {
-		return
-	}
-
-	var profitStr string
-	netVal, _ := strconv.ParseFloat(netValue, 64)
-	profit := (netVal - fund.Cost) / fund.Cost * 100
-	profitStr = fmt.Sprintf("%.2f", profit)
-	profitStr = upOrDown(profitStr)
-
-	fund.Name = netValueRes["SHORTNAME"].(string)
-	fund.Estimate.Gszzl = estimate.Gszzl
-	fund.Estimate.Gztime = estimate.Gztime
-	fund.Estimate.Gsz = estimate.Gsz
-	fund.NavChgRt = navChgRt
-	fund.NetValue = netVal
-	fund.NetValueDate = pDate
-	fund.Profit = profitStr
+	fund.Estimate = *estimate
+	// 计算净值收益率
+	profit := (netValue.Value - fund.Cost) / fund.Cost * 100
+	fund.Profit = fmt.Sprintf("%.2f", profit)
 
 	//res := fmt.Sprintf(
 	//	"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
@@ -135,6 +118,16 @@ func watchFund(fund *Fund) {
 	//	netValue,
 	//	profitStr,
 	//)
+}
+
+func getFundNetValue(fundCode string) (string, *NetValue) {
+	var netValue NetValue
+	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}})
+	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
+	netValue.Value, _ = strconv.ParseFloat(netValueRes["NAV"].(string), 64)
+	netValue.Date = netValueRes["PDATE"].(string)
+	netValue.Margin = netValueRes["NAVCHGRT"].(string) + "%"
+	return netValueRes["SHORTNAME"].(string), &netValue
 }
 
 // 获取基金实时估算净值
@@ -264,15 +257,13 @@ type Config struct {
 }
 
 type Fund struct {
-	Code         string   // 基金代码
-	Name         string   // 基金名称
-	Cost         float64  // 基金成本价
-	NetValue     float64  // 基金净值
-	NetValueDate string   // 净值日期
-	NavChgRt     string   // 净值涨跌幅
-	Profit       string   // 基金收益率
-	Estimate     Estimate // 实时估算净值
-	Hint         string   // 提示信息
+	Code     string   // 基金代码
+	Name     string   // 基金名称
+	Cost     float64  // 基金成本价
+	NetValue NetValue // 基金净值
+	Profit   string   // 基金收益率
+	Estimate Estimate // 实时估算净值
+	Hint     string   // 提示信息
 }
 
 // Estimate 实时估值结构体
@@ -280,4 +271,10 @@ type Estimate struct {
 	Gsz    string `json:"gsz"`    // 实时估算净值
 	Gszzl  string `json:"gszzl"`  // 实时估算涨跌幅
 	Gztime string `json:"gztime"` // 实时估算时间
+}
+
+type NetValue struct {
+	Value  float64 // 净值
+	Date   string  // 净值日期
+	Margin string  // 净值涨跌幅百分比
 }
