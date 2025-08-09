@@ -64,7 +64,7 @@ func main() {
 
 			var message strings.Builder
 			for _, fund := range funds {
-				message.WriteString(fmt.Sprint(fund))
+				message.WriteString(prettyPrint(fund))
 			}
 			if configs.Token.Lark != "" {
 				sendToFeishu(configs.Token.Lark, message.String())
@@ -104,21 +104,6 @@ func watchFund(fund *Fund) {
 	fund.NetProfit = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
 	estimateValue, _ := strconv.ParseFloat(estimate.Gsz, 64)
 	fund.EstimateProfit = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
-
-	//res := fmt.Sprintf(
-	//	"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
-	//	fundCode,
-	//	netValueRes["SHORTNAME"].(string),
-	//	time.Now().Format("2006-01-02"),
-	//	costStr,
-	//	estimate.Gztime,
-	//	strings.ReplaceAll(upOrDown(estimate.Gszzl), "▲", "🔺"),
-	//	estimate.Gsz,
-	//	pDate,
-	//	upOrDown(navChgRt),
-	//	netValue,
-	//	profitStr,
-	//)
 }
 
 func getFundNetValue(fundCode string) (string, *NetValue) {
@@ -229,6 +214,21 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 		return nil, string(body)
 	}
 	return result, ""
+}
+
+func prettyPrint(fund Fund) string {
+	title := fmt.Sprintf("%s（成本价：%.4f）\n", fund.Name, fund.Cost)
+	netRow := fmt.Sprintf("估算涨跌幅：%s 估算净值：%s 估算收益率 %s%%（%s）\n",
+		strings.ReplaceAll(upOrDown(fund.Estimate.Gszzl), "▲", "🔺"),
+		fund.Estimate.Gsz,
+		fund.EstimateProfit,
+		fund.Estimate.Gztime)
+	estimateRow := fmt.Sprintf("涨跌幅：%s 净值：%.4f 收益率：%s%%（%s）\n",
+		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
+		fund.NetValue.Value,
+		fund.NetProfit,
+		fund.NetValue.Date)
+	return title + netRow + estimateRow + "\n"
 }
 
 // 发送消息到飞书
