@@ -15,8 +15,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
+
+var verbose bool
 
 func main() {
 	app := &cli.App{
@@ -43,16 +44,28 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			verbose := cCtx.Bool("verbose")
+			verbose = cCtx.Bool("verbose")
 			configFilePath := cCtx.String("config-file")
 			configs := readConfigs(configFilePath)
 
 			costs := configs.Funds
-			var message strings.Builder
+			var funds []Fund
 			for code, cost := range costs {
-				message.WriteString(watchFund(code, cost, verbose))
+				f := Fund{
+					Code: code,
+					Cost: cost,
+				}
+				watchFund(&f)
+				funds = append(funds, f)
 			}
+			// TODO: Implement filtering and sorting of funds
+			//filterFunds(funds)
+			//sortFunds(funds)
 
+			var message strings.Builder
+			for _, fund := range funds {
+				message.WriteString(fmt.Sprint(fund))
+			}
 			if configs.Token.Lark != "" {
 				sendToFeishu(configs.Token.Lark, message.String())
 			}
@@ -79,53 +92,56 @@ func readConfigs(configsFilePath string) *Config {
 	return &config
 }
 
-func watchFund(fundCode string, cost float64, verbose bool) string {
+func watchFund(fund *Fund) {
 	// 获取基金净值
-	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}}, false)
+	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fund.Code}})
 	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
 	netValue := netValueRes["NAV"].(string)
 	pDate := netValueRes["PDATE"].(string)
 	navChgRt := netValueRes["NAVCHGRT"].(string)
 
 	// 获取实时估算净值
-	estimate := getFundRealtimeEstimate(fundCode)
+	estimate := getFundRealtimeEstimate(fund.Code)
 	if estimate == nil {
-		return ""
+		return
 	}
 
-	var costStr, profitStr string
+	var profitStr string
 	netVal, _ := strconv.ParseFloat(netValue, 64)
-	profit := (netVal - cost) / cost * 100
-	costStr = fmt.Sprintf("%.4f", cost)
+	profit := (netVal - fund.Cost) / fund.Cost * 100
 	profitStr = fmt.Sprintf("%.2f", profit)
 	profitStr = upOrDown(profitStr)
 
-	res := fmt.Sprintf(
-		"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
-		fundCode,
-		netValueRes["SHORTNAME"].(string),
-		time.Now().Format("2006-01-02"),
-		costStr,
-		estimate.Gztime,
-		strings.ReplaceAll(upOrDown(estimate.Gszzl), "▲", "🔺"),
-		estimate.Gsz,
-		pDate,
-		upOrDown(navChgRt),
-		netValue,
-		profitStr,
-	)
+	fund.Name = netValueRes["SHORTNAME"].(string)
+	fund.Estimate.Gszzl = estimate.Gszzl
+	fund.Estimate.Gztime = estimate.Gztime
+	fund.Estimate.Gsz = estimate.Gsz
+	fund.NavChgRt = navChgRt
+	fund.NetValue = netVal
+	fund.NetValueDate = pDate
+	fund.Profit = profitStr
 
-	if verbose {
-		fmt.Println(res)
-	}
-	return res
+	//res := fmt.Sprintf(
+	//	"%s|%s\n%s 成本价：%s\n%s 估算涨跌幅：%s 估算净值：%s\n%s 涨跌幅：%s 净值：%s（收益率：%s）\n------------------------------------------------------\n",
+	//	fundCode,
+	//	netValueRes["SHORTNAME"].(string),
+	//	time.Now().Format("2006-01-02"),
+	//	costStr,
+	//	estimate.Gztime,
+	//	strings.ReplaceAll(upOrDown(estimate.Gszzl), "▲", "🔺"),
+	//	estimate.Gsz,
+	//	pDate,
+	//	upOrDown(navChgRt),
+	//	netValue,
+	//	profitStr,
+	//)
 }
 
 // 获取基金实时估算净值
 func getFundRealtimeEstimate(fundCode string) *Estimate {
-	url := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
+	reUrl := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
 	client := &http.Client{}
-	req, _ := http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequest("GET", reUrl, nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil
@@ -156,7 +172,7 @@ func upOrDown(value string) string {
 	return fmt.Sprintf("%.2f%% ▼", v)
 }
 
-func getFundHttpsResponse(getUrl string, params url.Values, verbose bool) (map[string]interface{}, string) {
+func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
 	var (
 		DeviceID = "874C427C-7C24-4980-A835-66FD40B67605"
 		Version  = "6.5.5"
@@ -240,16 +256,28 @@ func sendToFeishu(larkWebhookToken, msg string) {
 	defer resp.Body.Close()
 }
 
-// Estimate 实时估值结构体
-type Estimate struct {
-	Gsz    string `json:"gsz"`
-	Gszzl  string `json:"gszzl"`
-	Gztime string `json:"gztime"`
-}
-
 type Config struct {
 	Funds map[string]float64 `yaml:"funds"`
 	Token struct {
 		Lark string `yaml:"lark"`
 	} `yaml:"token"`
+}
+
+type Fund struct {
+	Code         string   // 基金代码
+	Name         string   // 基金名称
+	Cost         float64  // 基金成本价
+	NetValue     float64  // 基金净值
+	NetValueDate string   // 净值日期
+	NavChgRt     string   // 净值涨跌幅
+	Profit       string   // 基金收益率
+	Estimate     Estimate // 实时估算净值
+	Hint         string   // 提示信息
+}
+
+// Estimate 实时估值结构体
+type Estimate struct {
+	Gsz    string `json:"gsz"`    // 实时估算净值
+	Gszzl  string `json:"gszzl"`  // 实时估算涨跌幅
+	Gztime string `json:"gztime"` // 实时估算时间
 }
