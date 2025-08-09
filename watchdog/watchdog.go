@@ -249,7 +249,11 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 // 成立：...
 func prettyPrint(fund Fund) string {
 	today := time.Now().Format("2006-01-02")
+	// TODO 应该在 filter 里进行过滤
 	if today > fund.NetValue.Date {
+		if verbose {
+			println("没开盘")
+		}
 		return ""
 	}
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
