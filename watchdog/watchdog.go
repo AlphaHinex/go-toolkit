@@ -242,8 +242,8 @@ func filterFunds(funds []Fund) []Fund {
 }
 
 func conditionChain(fund Fund) bool {
-	now, estimateTime, netValueDate := getDateTimes(fund)
-	return isWatchTime(now) && (isOpening(now, estimateTime) || needToShowNetValue(now, estimateTime, netValueDate))
+	now, _, _ := getDateTimes(fund)
+	return isWatchTime(now) && (isOpening(fund) || needToShowNetValue(fund))
 }
 
 func isWatchTime(now time.Time) bool {
@@ -276,34 +276,36 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 }
 
 // 判断是否开盘中
-func isOpening(now, estimateTime time.Time) bool {
-	if isSameDay(now, estimateTime) && inOpeningHours(estimateTime) {
+func isOpening(fund Fund) bool {
+	now, estimateTime, _ := getDateTimes(fund)
+	if isSameDay(now, estimateTime) && inOpeningHours(now) {
 		if verbose {
-			println("开盘中")
+			fmt.Printf("开盘中 %s\n", fund.Name)
 		}
 		return true
 	} else {
 		if verbose {
-			println("非开盘时间")
+			fmt.Printf("非开盘时间 %s\n", fund.Name)
 		}
 		return false
 	}
 }
 
-func needToShowNetValue(now, estimateTime, netValueDate time.Time) bool {
-	if isSameDay(now, estimateTime) && !inOpeningHours(estimateTime) {
+func needToShowNetValue(fund Fund) bool {
+	now, estimateTime, netValueDate := getDateTimes(fund)
+	if isSameDay(now, estimateTime) && !inOpeningHours(now) {
 		if verbose {
-			println("开盘日非开盘时间")
+			fmt.Printf("开盘日非开盘时间 %s\n", fund.Name)
 		}
 		return true
 	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !inOpeningHours(now) {
 		if verbose {
-			println("开盘日结束后净值")
+			fmt.Printf("开盘日结束后净值 %s\n", fund.Name)
 		}
 		return true
 	} else {
 		if verbose {
-			println("非开盘日不显示净值")
+			fmt.Printf("非开盘日不显示净值 %s\n", fund.Name)
 		}
 		return false
 	}
@@ -355,15 +357,14 @@ func prettyPrint(fund Fund) string {
 		strings.Split(fund.Estimate.Datetime, " ")[1])
 
 	result := title + costRow
-	now, estimateTime, netValueDate := getDateTimes(fund)
-	if isOpening(now, estimateTime) {
+	if isOpening(fund) {
 		result += estimateRow
 	}
-	if needToShowNetValue(now, estimateTime, netValueDate) {
+	if needToShowNetValue(fund) {
 		result += netRow
 	}
 	if needToShowHistory(fund) {
-		if !needToShowNetValue(now, estimateTime, netValueDate) {
+		if !needToShowNetValue(fund) {
 			result += netRow
 		}
 		historyRow := ""
@@ -377,16 +378,15 @@ func prettyPrint(fund Fund) string {
 }
 
 func needToShowHistory(fund Fund) bool {
-	now, estimateTime, _ := getDateTimes(fund)
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 	estimateProfit, _ := strconv.ParseFloat(fund.EstimateProfit, 64)
-	if isOpening(now, estimateTime) && estimateMargin > 0 && estimateProfit > 0 {
+	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 && estimateProfit < 35 {
 		if verbose {
 			fmt.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		}
 		return true
 	}
-	if isOpening(now, estimateTime) && estimateMargin < -1 && estimateProfit < 0 {
+	if isOpening(fund) && estimateMargin < -1 && estimateProfit < 0 {
 		if verbose {
 			fmt.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		}
