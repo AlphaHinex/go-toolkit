@@ -363,6 +363,9 @@ func prettyPrint(fund Fund) string {
 		result += netRow
 	}
 	if needToShowHistory(fund) {
+		if !needToShowNetValue(now, estimateTime, netValueDate) {
+			result += netRow
+		}
 		historyRow := ""
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
