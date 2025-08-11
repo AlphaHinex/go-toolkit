@@ -103,7 +103,7 @@ func watchFund(fund *Fund) {
 	fund.Estimate = *estimate
 	// 计算收益率
 	fund.NetProfit = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
-	estimateValue, _ := strconv.ParseFloat(estimate.Gsz, 64)
+	estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
 	fund.EstimateProfit = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
 }
 
@@ -256,7 +256,7 @@ func isOpening(fund Fund) bool {
 	now := time.Now().In(loc)
 
 	// 获取估值时间
-	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Gztime, loc)
+	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Datetime, loc)
 	if err != nil {
 		if verbose {
 			println("时间解析错误:", err.Error())
@@ -334,12 +334,12 @@ func prettyPrint(fund Fund) string {
 		fund.NetProfit,
 		fund.NetValue.Date)
 	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
-		fund.Estimate.Gsz,
-		upOrDown(fund.Estimate.Gszzl),
+		fund.Estimate.Value,
+		upOrDown(fund.Estimate.Margin),
 		fund.EstimateProfit,
-		strings.Split(fund.Estimate.Gztime, " ")[1])
+		strings.Split(fund.Estimate.Datetime, " ")[1])
 
-	if fund.NetValue.Date == strings.Split(fund.Estimate.Gztime, " ")[0] {
+	if fund.NetValue.Date == strings.Split(fund.Estimate.Datetime, " ")[0] {
 		historyRow := ""
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
@@ -391,9 +391,9 @@ type Fund struct {
 
 // Estimate 实时估值结构体
 type Estimate struct {
-	Gsz    string `json:"gsz"`    // 实时估算净值
-	Gszzl  string `json:"gszzl"`  // 实时估算涨跌幅
-	Gztime string `json:"gztime"` // 实时估算时间
+	Value    string `json:"gsz"`    // 实时估算净值
+	Margin   string `json:"gszzl"`  // 实时估算涨跌幅
+	Datetime string `json:"gztime"` // 实时估算时间
 }
 
 type NetValue struct {
