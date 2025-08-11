@@ -59,8 +59,8 @@ func main() {
 				watchFund(&f)
 				funds = append(funds, f)
 			}
-			// TODO: Implement filtering and sorting of funds
-			//filterFunds(funds)
+			funds = filterFunds(funds)
+			// TODO: Implement sorting of funds
 			//sortFunds(funds)
 
 			var message strings.Builder
@@ -149,14 +149,14 @@ func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue
 	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {fundCode}, "RANGE": {rangeCode}})
 	for _, data := range res["data"].([]interface{}) {
-		value, _ := strconv.ParseFloat(data.(map[string]interface {})["DWJZ"].(string), 64)
+		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
 		if min.Value == 0 || value < min.Value {
 			min.Value = value
-			min.Date = data.(map[string]interface {})["FSRQ"].(string)
+			min.Date = data.(map[string]interface{})["FSRQ"].(string)
 		}
 		if max.Value == 0 || value > max.Value {
 			max.Value = value
-			max.Date = data.(map[string]interface {})["FSRQ"].(string)
+			max.Date = data.(map[string]interface{})["FSRQ"].(string)
 		}
 	}
 	return min, max
@@ -235,6 +235,84 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	return result, ""
 }
 
+func filterFunds(funds []Fund) []Fund {
+	var result []Fund
+	for _, f := range funds {
+		if conditionChain(f) {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+func conditionChain(fund Fund) bool {
+	return isOpening(fund)
+}
+
+// 判断当天是否开盘
+func isOpening(fund Fund) bool {
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	// 获取当前时间并转换为东八区时间
+	now := time.Now().In(loc)
+
+	// 获取估值时间
+	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Gztime, loc)
+	if err != nil {
+		if verbose {
+			println("时间解析错误:", err.Error())
+		}
+		return false
+	}
+
+	// 获取净值日期
+	netValueDate, err := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
+
+	if isSameDay(now, estimateTime) && inOpeningHours(estimateTime) {
+		// 0. 开盘日开盘时间
+		if verbose {
+			println("开盘中")
+		}
+		return true
+	} else if isSameDay(now, estimateTime) && !inOpeningHours(estimateTime) {
+		// 1. 开盘日非开盘时间
+		if verbose {
+			println("开盘日非开盘时间")
+		}
+		return false
+	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !inOpeningHours(now) {
+		// 2. 开盘日结束后净值
+		if verbose {
+			println("开盘日结束后净值")
+		}
+		return true
+	} else {
+		// 3. 非开盘日
+		if verbose {
+			println("非开盘日")
+		}
+		return false
+	}
+}
+
+func isSameDay(t1, t2 time.Time) bool {
+	return t1.Year() == t2.Year() && t1.Month() == t2.Month() && t1.Day() == t2.Day()
+}
+
+func inOpeningHours(t time.Time) bool {
+	hour := t.Hour()
+	minute := t.Minute()
+
+	// 上午9:30-11:30
+	if (hour == 9 && minute >= 30) || (hour > 9 && hour < 11) || (hour == 11 && minute <= 30) {
+		return true
+	}
+	// 下午13:00-15:00
+	if (hour == 13) || (hour > 13 && hour < 15) || (hour == 15 && minute == 0) {
+		return true
+	}
+	return false
+}
+
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
@@ -248,14 +326,6 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 // 五年：...
 // 成立：...
 func prettyPrint(fund Fund) string {
-	today := time.Now().Format("2006-01-02")
-	// TODO 应该在 filter 里进行过滤
-	if today > fund.NetValue.Date {
-		if verbose {
-			println("没开盘")
-		}
-		return ""
-	}
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
 	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
 	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
