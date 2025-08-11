@@ -224,10 +224,6 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	defer resp.Body.Close()
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	if verbose {
-		fmt.Println(string(body))
-	}
-
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, string(body)
@@ -246,49 +242,68 @@ func filterFunds(funds []Fund) []Fund {
 }
 
 func conditionChain(fund Fund) bool {
-	return isOpening(fund)
+	now, estimateTime, netValueDate := getDateTimes(fund)
+	return isWatchTime(now) && (isOpening(now, estimateTime) || needToShowNetValue(now, estimateTime, netValueDate))
 }
 
-// 判断当天是否开盘
-func isOpening(fund Fund) bool {
+func isWatchTime(now time.Time) bool {
+	hour := now.Hour()
+	minute := now.Minute()
+	if hour > 9 && hour <= 22 && minute%15 == 0 {
+		return true
+	}
+	if hour == 14 && minute >= 45 && minute%2 == 0 {
+		return true
+	}
+	if verbose {
+		return true
+	}
+	return false
+}
+
+// 返回当前东八区时间，基金最近的估值时间，以及净值日期
+func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	// 获取当前时间并转换为东八区时间
 	now := time.Now().In(loc)
 
 	// 获取估值时间
-	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Datetime, loc)
-	if err != nil {
-		if verbose {
-			println("时间解析错误:", err.Error())
-		}
-		return false
-	}
+	estimateTime, _ := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Datetime, loc)
 
 	// 获取净值日期
-	netValueDate, err := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
+	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
+	return now, estimateTime, netValueDate
+}
 
+// 判断是否开盘中
+func isOpening(now, estimateTime time.Time) bool {
 	if isSameDay(now, estimateTime) && inOpeningHours(estimateTime) {
-		// 0. 开盘日开盘时间
 		if verbose {
 			println("开盘中")
 		}
 		return true
-	} else if isSameDay(now, estimateTime) && !inOpeningHours(estimateTime) {
-		// 1. 开盘日非开盘时间
+	} else {
+		if verbose {
+			println("非开盘时间")
+		}
+		return false
+	}
+}
+
+func needToShowNetValue(now, estimateTime, netValueDate time.Time) bool {
+	if isSameDay(now, estimateTime) && !inOpeningHours(estimateTime) {
 		if verbose {
 			println("开盘日非开盘时间")
 		}
-		return false
+		return true
 	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !inOpeningHours(now) {
-		// 2. 开盘日结束后净值
 		if verbose {
 			println("开盘日结束后净值")
 		}
 		return true
 	} else {
-		// 3. 非开盘日
 		if verbose {
-			println("非开盘日")
+			println("非开盘日不显示净值")
 		}
 		return false
 	}
@@ -339,16 +354,42 @@ func prettyPrint(fund Fund) string {
 		fund.EstimateProfit,
 		strings.Split(fund.Estimate.Datetime, " ")[1])
 
-	if fund.NetValue.Date == strings.Split(fund.Estimate.Datetime, " ")[0] {
+	result := title + costRow
+	now, estimateTime, netValueDate := getDateTimes(fund)
+	if isOpening(now, estimateTime) {
+		result += estimateRow
+	}
+	if needToShowNetValue(now, estimateTime, netValueDate) {
+		result += netRow
+	}
+	if needToShowHistory(fund) {
 		historyRow := ""
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
 			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
 		}
-		return title + costRow + netRow + historyRow + "\n"
-	} else {
-		return title + costRow + estimateRow + "\n"
+		result += historyRow
 	}
+	return result + "\n"
+}
+
+func needToShowHistory(fund Fund) bool {
+	now, estimateTime, _ := getDateTimes(fund)
+	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
+	estimateProfit, _ := strconv.ParseFloat(fund.EstimateProfit, 64)
+	if isOpening(now, estimateTime) && estimateMargin > 0 && estimateProfit > 0 {
+		if verbose {
+			fmt.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+		}
+		return true
+	}
+	if isOpening(now, estimateTime) && estimateMargin < -1 && estimateProfit < 0 {
+		if verbose {
+			fmt.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+		}
+		return true
+	}
+	return false
 }
 
 // 发送消息到飞书
