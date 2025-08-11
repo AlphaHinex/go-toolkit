@@ -50,13 +50,11 @@ func main() {
 			configs := readConfigs(configFilePath)
 
 			fundsMap := configs.Funds
-			var funds []Fund
+			var funds []*Fund
 			for key, fund := range fundsMap {
-				if fund.Code == "" {
-					fund.Code = key
-				}
+				fund.Code = key
 				watchFund(fund)
-				funds = append(funds, *fund)
+				funds = append(funds, fund)
 			}
 			funds = filterFunds(funds)
 			// TODO: Implement sorting of funds
@@ -64,7 +62,10 @@ func main() {
 
 			var message strings.Builder
 			for _, fund := range funds {
-				message.WriteString(prettyPrint(fund))
+				message.WriteString(prettyPrint(*fund))
+				if fund.NetValue.Updated {
+					fund.Ended = true
+				}
 			}
 			if len(strings.TrimSpace(message.String())) > 0 {
 				if configs.Token.Lark != "" {
@@ -249,8 +250,8 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	return result, ""
 }
 
-func filterFunds(funds []Fund) []Fund {
-	var result []Fund
+func filterFunds(funds []*Fund) []*Fund {
+	var result []*Fund
 	for _, f := range funds {
 		if conditionChain(f) {
 			result = append(result, f)
@@ -259,15 +260,15 @@ func filterFunds(funds []Fund) []Fund {
 	return result
 }
 
-func conditionChain(fund Fund) bool {
-	now, _, _ := getDateTimes(fund)
-	return isWatchTime(now) && (isOpening(fund) || needToShowNetValue(fund))
+func conditionChain(fund *Fund) bool {
+	now, _, _ := getDateTimes(*fund)
+	return isWatchTime(now) && (isOpening(*fund) || needToShowNetValue(*fund))
 }
 
 func isWatchTime(now time.Time) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	if hour > 9 && hour <= 22 && minute%15 == 0 {
+	if hour > 9 && hour <= 20 && minute%15 == 0 {
 		return true
 	}
 	if hour == 14 && minute >= 45 && minute%2 == 0 {
@@ -311,14 +312,14 @@ func isOpening(fund Fund) bool {
 
 func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
-	if isSameDay(now, estimateTime) && !inOpeningHours(now) {
+	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) {
 		if verbose {
-			fmt.Printf("开盘日非开盘时间 %s\n", fund.Name)
+			fmt.Printf("开盘日中午休盘时间 %s\n", fund.Name)
 		}
 		return true
-	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !inOpeningHours(now) {
+	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !fund.Ended && fund.NetValue.Updated {
 		if verbose {
-			fmt.Printf("开盘日结束后净值 %s\n", fund.Name)
+			fmt.Printf("开盘日收盘净值更新后 %s\n", fund.Name)
 		}
 		return true
 	} else {
@@ -348,6 +349,12 @@ func inOpeningHours(t time.Time) bool {
 	return false
 }
 
+func inOpeningBreakTime(t time.Time) bool {
+	hour := t.Hour()
+	minute := t.Minute()
+	return (hour == 11 && minute >= 30) || (hour == 12)
+}
+
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
@@ -360,6 +367,9 @@ func inOpeningHours(t time.Time) bool {
 // 三年：...
 // 五年：...
 // 成立：...
+// 开盘时，需要显示历史记录的基金显示估值和净值，否则只显示估值
+// 交易日中午休盘时间，同时显示估值和净值
+// 交易日收盘后，待所有基金净值更新后，显示估值及净值
 func prettyPrint(fund Fund) string {
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
 	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
@@ -444,27 +454,28 @@ type Config struct {
 }
 
 type Fund struct {
-	Code     string   `yaml:"code"`     // 基金代码
-	Name     string   `yaml:"name"`     // 基金名称
-	Cost     float64  `yaml:"cost"`     // 基金成本价
-	NetValue NetValue `yaml:"net"`      // 基金净值
-	Estimate Estimate `yaml:"estimate"` // 实时估算净值
+	Code     string   `yaml:"-"`    // 基金代码
+	Name     string   `yaml:"name"` // 基金名称
+	Cost     float64  `yaml:"cost"` // 基金成本价
+	NetValue NetValue `yaml:"net"`  // 基金净值
+	Estimate Estimate `yaml:"-"`    // 实时估算净值
 	Profit   struct {
-		Estimate string `yaml:"estimate"` // 实时估算净值收益率
-		Net      string `yaml:"net"`      // 基金净值收益率
-	} `yaml:"profit"` // 基金净值收益率
+		Estimate string `yaml:"-"` // 实时估算净值收益率
+		Net      string `yaml:"-"` // 基金净值收益率
+	} `yaml:"-"` // 基金净值收益率
+	Ended bool `yaml:"ended"` // 当日监测是否已结束
 }
 
 // Estimate 实时估值结构体
 type Estimate struct {
-	Value    string `json:"gsz" yaml:"value"`       // 实时估算净值
-	Margin   string `json:"gszzl" yaml:"margin"`    // 实时估算涨跌幅
-	Datetime string `json:"gztime" yaml:"datetime"` // 实时估算时间
+	Value    string `json:"gsz" yaml:"-"`    // 实时估算净值
+	Margin   string `json:"gszzl" yaml:"-"`  // 实时估算涨跌幅
+	Datetime string `json:"gztime" yaml:"-"` // 实时估算时间
 }
 
 type NetValue struct {
-	Value   float64 `yaml:"value"`   // 净值
-	Margin  float64 `yaml:"margin"`  // 净值涨跌幅百分比
+	Value   float64 `yaml:"-"`       // 净值
+	Margin  float64 `yaml:"-"`       // 净值涨跌幅百分比
 	Date    string  `yaml:"date"`    // 净值日期
 	Updated bool    `yaml:"updated"` // 是否已更新净值
 }
