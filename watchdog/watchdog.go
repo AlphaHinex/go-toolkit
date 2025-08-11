@@ -49,15 +49,14 @@ func main() {
 			configFilePath := cCtx.String("config-file")
 			configs := readConfigs(configFilePath)
 
-			costs := configs.Funds
+			fundsMap := configs.Funds
 			var funds []Fund
-			for code, cost := range costs {
-				f := Fund{
-					Code: code,
-					Cost: cost,
+			for key, fund := range fundsMap {
+				if fund.Code == "" {
+					fund.Code = key
 				}
-				watchFund(&f)
-				funds = append(funds, f)
+				watchFund(fund)
+				funds = append(funds, *fund)
 			}
 			funds = filterFunds(funds)
 			// TODO: Implement sorting of funds
@@ -67,10 +66,15 @@ func main() {
 			for _, fund := range funds {
 				message.WriteString(prettyPrint(fund))
 			}
-			if configs.Token.Lark != "" && len(strings.TrimSpace(message.String())) > 0 {
-				sendToLark(configs.Token.Lark, strings.TrimSpace(message.String()))
+			if len(strings.TrimSpace(message.String())) > 0 {
+				if configs.Token.Lark != "" {
+					sendToLark(configs.Token.Lark, strings.TrimSpace(message.String()))
+				} else {
+					fmt.Println(strings.TrimSpace(message.String()))
+				}
 			}
 
+			writeConfigs(configFilePath, configs)
 			return nil
 		},
 	}
@@ -93,20 +97,34 @@ func readConfigs(configsFilePath string) *Config {
 	return &config
 }
 
+func writeConfigs(configFilePath string, configs *Config) {
+	// 将 Configs 内容序列化至文件
+	content, err := yaml.Marshal(configs)
+	if err != nil {
+		log.Panicf("序列化配置失败: %v", err)
+	}
+	if err := os.WriteFile(configFilePath, content, 0644); err != nil {
+		log.Panicf("写入配置文件 %s 失败: %v", configFilePath, err)
+	}
+}
+
 func watchFund(fund *Fund) {
 	// 获取基金净值
 	name, netValue := getFundNetValue(fund.Code)
 	fund.Name = name
 	fund.NetValue = *netValue
+	now, _, latestNetValueDate := getDateTimes(*fund)
+	fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	// 获取实时估算净值
 	estimate := getFundRealtimeEstimate(fund.Code)
 	fund.Estimate = *estimate
 	// 计算收益率
-	fund.NetProfit = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
+	fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
 	estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
-	fund.EstimateProfit = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+	fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
 }
 
+// 获得基金名称以及净值信息
 func getFundNetValue(fundCode string) (string, *NetValue) {
 	var netValue NetValue
 	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}})
@@ -348,12 +366,12 @@ func prettyPrint(fund Fund) string {
 	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
 		fund.NetValue.Value,
 		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
-		fund.NetProfit,
+		fund.Profit.Net,
 		fund.NetValue.Date)
 	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
 		fund.Estimate.Value,
 		upOrDown(fund.Estimate.Margin),
-		fund.EstimateProfit,
+		fund.Profit.Estimate,
 		strings.Split(fund.Estimate.Datetime, " ")[1])
 
 	result := title + costRow
@@ -361,6 +379,9 @@ func prettyPrint(fund Fund) string {
 		result += estimateRow
 	}
 	if needToShowNetValue(fund) {
+		if !isOpening(fund) {
+			result += estimateRow
+		}
 		result += netRow
 	}
 	if needToShowHistory(fund) {
@@ -379,7 +400,7 @@ func prettyPrint(fund Fund) string {
 
 func needToShowHistory(fund Fund) bool {
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
-	estimateProfit, _ := strconv.ParseFloat(fund.EstimateProfit, 64)
+	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
 	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 && estimateProfit < 35 {
 		if verbose {
 			fmt.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
@@ -416,32 +437,34 @@ func sendToLark(larkWebhookToken, msg string) {
 }
 
 type Config struct {
-	Funds map[string]float64 `yaml:"funds"`
+	Funds map[string]*Fund `yaml:"funds"`
 	Token struct {
 		Lark string `yaml:"lark"`
 	} `yaml:"token"`
 }
 
 type Fund struct {
-	Code           string   // 基金代码
-	Name           string   // 基金名称
-	Cost           float64  // 基金成本价
-	NetValue       NetValue // 基金净值
-	NetProfit      string   // 基金净值收益率
-	Estimate       Estimate // 实时估算净值
-	EstimateProfit string   // 实时估算净值收益率
-	Hint           string   // 提示信息
+	Code     string   `yaml:"code"`     // 基金代码
+	Name     string   `yaml:"name"`     // 基金名称
+	Cost     float64  `yaml:"cost"`     // 基金成本价
+	NetValue NetValue `yaml:"net"`      // 基金净值
+	Estimate Estimate `yaml:"estimate"` // 实时估算净值
+	Profit   struct {
+		Estimate string `yaml:"estimate"` // 实时估算净值收益率
+		Net      string `yaml:"net"`      // 基金净值收益率
+	} `yaml:"profit"` // 基金净值收益率
 }
 
 // Estimate 实时估值结构体
 type Estimate struct {
-	Value    string `json:"gsz"`    // 实时估算净值
-	Margin   string `json:"gszzl"`  // 实时估算涨跌幅
-	Datetime string `json:"gztime"` // 实时估算时间
+	Value    string `json:"gsz" yaml:"value"`       // 实时估算净值
+	Margin   string `json:"gszzl" yaml:"margin"`    // 实时估算涨跌幅
+	Datetime string `json:"gztime" yaml:"datetime"` // 实时估算时间
 }
 
 type NetValue struct {
-	Value  float64 // 净值
-	Margin float64 // 净值涨跌幅百分比
-	Date   string  // 净值日期
+	Value   float64 `yaml:"value"`   // 净值
+	Margin  float64 `yaml:"margin"`  // 净值涨跌幅百分比
+	Date    string  `yaml:"date"`    // 净值日期
+	Updated bool    `yaml:"updated"` // 是否已更新净值
 }
