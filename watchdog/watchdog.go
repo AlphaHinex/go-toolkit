@@ -390,15 +390,23 @@ func prettyPrint(fund Fund) string {
 		strings.Split(fund.Estimate.Datetime, " ")[1])
 
 	result := title + costRow
-	if isOpening(fund) {
-		result += estimateRow
-	}
-	if needToShowNetValue(fund) {
-		if !isOpening(fund) {
+	// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
+	now, _, _ := getDateTimes(fund)
+	if inOpeningBreakTime(now) {
+		result += netRow + estimateRow
+	} else {
+		// 开盘中显示实时估值
+		if isOpening(fund) {
+			if needToShowNetValue(fund) {
+				result += netRow
+			}
 			result += estimateRow
+		} else if needToShowNetValue(fund) {
+			// 交易日净值更新后，同时显示估值和最终净值
+			result += estimateRow + netRow
 		}
-		result += netRow
 	}
+
 	if needToShowHistory(fund) {
 		if !needToShowNetValue(fund) {
 			result += netRow
