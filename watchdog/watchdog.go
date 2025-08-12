@@ -118,8 +118,9 @@ func watchFund(fund *Fund) {
 	fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	// 获取实时估算净值
 	estimate := getFundRealtimeEstimate(fund.Code)
-	fund.Estimate.Changed = fund.Estimate.Datetime != estimate.Datetime
+	changed := !(fund.Estimate.Datetime == estimate.Datetime)
 	fund.Estimate = *estimate
+	fund.Estimate.Changed = changed
 	// 计算收益率
 	fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
 	estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
@@ -157,11 +158,12 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 	}
 
 	var e Estimate
-	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
-		// TODO 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
-		panic(err.Error())
-		return nil
-	}
+	_ = json.Unmarshal([]byte(matches[1]), &e)
+	//if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
+	//	// TODO 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
+	//	panic(err.Error())
+	//	return nil
+	//}
 	return &e
 }
 
@@ -484,7 +486,7 @@ type Estimate struct {
 	Value    string `json:"gsz" yaml:"-"`           // 实时估算净值
 	Margin   string `json:"gszzl" yaml:"-"`         // 实时估算涨跌幅
 	Datetime string `json:"gztime" yaml:"datetime"` // 实时估算时间
-	Changed  bool   `yaml:"changed"`                // 实时估算是否变动
+	Changed  bool   `json:"-" yaml:"changed"`       // 实时估算是否变动
 }
 
 type NetValue struct {
