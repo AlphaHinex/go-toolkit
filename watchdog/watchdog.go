@@ -321,12 +321,13 @@ func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
 	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		if verbose {
-			fmt.Printf("开盘日中午休盘时间 %s\n", fund.Name)
+			fmt.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
 		}
 		return true
-	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) && !fund.Ended && fund.NetValue.Updated {
+	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) &&
+		!fund.Ended && (fund.NetValue.Updated || fund.Estimate.Changed) {
 		if verbose {
-			fmt.Printf("开盘日收盘净值更新后 %s\n", fund.Name)
+			fmt.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
 		}
 		return true
 	} else {
