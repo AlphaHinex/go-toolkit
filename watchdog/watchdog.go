@@ -118,6 +118,7 @@ func watchFund(fund *Fund) {
 	fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	// 获取实时估算净值
 	estimate := getFundRealtimeEstimate(fund.Code)
+	fund.Estimate.Changed = fund.Estimate.Datetime != estimate.Datetime
 	fund.Estimate = *estimate
 	// 计算收益率
 	fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
@@ -316,7 +317,7 @@ func isOpening(fund Fund) bool {
 
 func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
-	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) {
+	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		if verbose {
 			fmt.Printf("开盘日中午休盘时间 %s\n", fund.Name)
 		}
@@ -458,11 +459,11 @@ type Config struct {
 }
 
 type Fund struct {
-	Code     string   `yaml:"-"`    // 基金代码
-	Name     string   `yaml:"name"` // 基金名称
-	Cost     float64  `yaml:"cost"` // 基金成本价
-	NetValue NetValue `yaml:"net"`  // 基金净值
-	Estimate Estimate `yaml:"-"`    // 实时估算净值
+	Code     string   `yaml:"-"`        // 基金代码
+	Name     string   `yaml:"name"`     // 基金名称
+	Cost     float64  `yaml:"cost"`     // 基金成本价
+	NetValue NetValue `yaml:"net"`      // 基金净值
+	Estimate Estimate `yaml:"estimate"` // 实时估算净值
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
@@ -472,9 +473,10 @@ type Fund struct {
 
 // Estimate 实时估值结构体
 type Estimate struct {
-	Value    string `json:"gsz" yaml:"-"`    // 实时估算净值
-	Margin   string `json:"gszzl" yaml:"-"`  // 实时估算涨跌幅
-	Datetime string `json:"gztime" yaml:"-"` // 实时估算时间
+	Value    string `json:"gsz" yaml:"-"`           // 实时估算净值
+	Margin   string `json:"gszzl" yaml:"-"`         // 实时估算涨跌幅
+	Datetime string `json:"gztime" yaml:"datetime"` // 实时估算时间
+	Changed  bool   `yaml:"changed"`                // 实时估算是否变动
 }
 
 type NetValue struct {
