@@ -157,6 +157,7 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 
 	var e Estimate
 	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
+		// TODO 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
 		panic(err.Error())
 		return nil
 	}
@@ -265,12 +266,15 @@ func conditionChain(fund *Fund) bool {
 	return isWatchTime(now) && (isOpening(*fund) || needToShowNetValue(*fund))
 }
 
+// 判断当前时间是否为监测时间点
 func isWatchTime(now time.Time) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	if hour > 9 && hour <= 20 && minute%15 == 0 {
+	// 9 点到 21 点之间，每 15 分钟一次
+	if hour >= 9 && hour <= 20 && minute%15 == 0 {
 		return true
 	}
+	// 14 点 45 至 15 点，每 2 分钟一次
 	if hour == 14 && minute >= 45 && minute%2 == 0 {
 		return true
 	}
