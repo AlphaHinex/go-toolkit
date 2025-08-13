@@ -71,7 +71,7 @@ func main() {
 				if configs.Token.Lark != "" {
 					sendToLark(configs.Token.Lark, strings.TrimSpace(message.String()))
 				} else {
-					fmt.Println(strings.TrimSpace(message.String()))
+					log.Println(strings.TrimSpace(message.String()))
 				}
 			}
 
@@ -240,7 +240,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	resp, err := client.Do(req)
 	if err != nil {
 		if verbose {
-			fmt.Println("Error making GET request:", err)
+			log.Println("Error making GET request:", err)
 		}
 		return nil, ""
 	}
@@ -306,12 +306,12 @@ func isOpening(fund Fund) bool {
 	now, estimateTime, _ := getDateTimes(fund)
 	if isSameDay(now, estimateTime) && inOpeningHours(now) {
 		if verbose {
-			fmt.Printf("开盘中 %s\n", fund.Name)
+			log.Printf("开盘中 %s\n", fund.Name)
 		}
 		return true
 	} else {
 		if verbose {
-			fmt.Printf("非开盘时间 %s\n", fund.Name)
+			log.Printf("非开盘时间 %s\n", fund.Name)
 		}
 		return false
 	}
@@ -321,18 +321,18 @@ func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
 	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		if verbose {
-			fmt.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
+			log.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
 		}
 		return true
 	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) &&
 		!fund.Ended && (fund.NetValue.Updated || fund.Estimate.Changed) {
 		if verbose {
-			fmt.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
+			log.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
 		}
 		return true
 	} else {
 		if verbose {
-			fmt.Printf("非开盘日不显示净值 %s\n", fund.Name)
+			log.Printf("非开盘日不显示净值 %s\n", fund.Name)
 		}
 		return false
 	}
@@ -427,15 +427,15 @@ func prettyPrint(fund Fund) string {
 func needToShowHistory(fund Fund) bool {
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
-	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 && estimateProfit < 35 {
+	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 {
 		if verbose {
-			fmt.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		}
 		return true
 	}
 	if isOpening(fund) && estimateMargin < -1 && estimateProfit < 0 {
 		if verbose {
-			fmt.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		}
 		return true
 	}
