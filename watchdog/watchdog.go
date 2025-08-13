@@ -239,9 +239,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	// 5. 发送请求
 	resp, err := client.Do(req)
 	if err != nil {
-		if verbose {
-			log.Println("Error making GET request:", err)
-		}
+		log.Println("Error making GET request:", err)
 		return nil, ""
 	}
 	defer resp.Body.Close()
@@ -320,20 +318,14 @@ func isOpening(fund Fund) bool {
 func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
 	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
-		if verbose {
-			log.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
-		}
+		log.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
 		return true
 	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) &&
 		!fund.Ended && (fund.NetValue.Updated || fund.Estimate.Changed) {
-		if verbose {
-			log.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
-		}
+		log.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
 		return true
 	} else {
-		if verbose {
-			log.Printf("非开盘日不显示净值 %s\n", fund.Name)
-		}
+		log.Printf("非开盘日不显示净值 %s\n", fund.Name)
 		return false
 	}
 }
@@ -428,15 +420,11 @@ func needToShowHistory(fund Fund) bool {
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
 	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 {
-		if verbose {
-			log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		}
+		log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		return true
 	}
 	if isOpening(fund) && estimateMargin < -1 && estimateProfit < 0 {
-		if verbose {
-			log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		}
+		log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		return true
 	}
 	return false
@@ -444,6 +432,7 @@ func needToShowHistory(fund Fund) bool {
 
 // 发送消息到飞书
 func sendToLark(larkWebhookToken, msg string) {
+	log.Println("准备发送消息到飞书: ", msg)
 	larkWebhook := "https://open.feishu.cn/open-apis/bot/v2/hook/" + larkWebhookToken
 
 	payload := map[string]interface{}{
@@ -459,6 +448,10 @@ func sendToLark(larkWebhookToken, msg string) {
 
 	client := &http.Client{}
 	resp, _ := client.Do(req)
+	log.Println("飞书返回状态: ", resp.Status)
+	if resp.StatusCode != 200 {
+		log.Println(resp.Body)
+	}
 	defer resp.Body.Close()
 }
 
