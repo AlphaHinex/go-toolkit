@@ -114,17 +114,22 @@ func watchFund(fund *Fund) {
 	name, netValue := getFundNetValue(fund.Code)
 	fund.Name = name
 	fund.NetValue = *netValue
+
 	now, _, latestNetValueDate := getDateTimes(*fund)
-	fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
-	// 获取实时估算净值
-	estimate := getFundRealtimeEstimate(fund.Code)
-	changed := !(fund.Estimate.Datetime == estimate.Datetime)
-	fund.Estimate = *estimate
-	fund.Estimate.Changed = changed
-	// 计算收益率
-	fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
-	estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
-	fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+	if isWatchTime(now) {
+		// 获取实时估算净值
+		estimate := getFundRealtimeEstimate(fund.Code)
+		changed := !(fund.Estimate.Datetime == estimate.Datetime)
+		fund.Estimate = *estimate
+		fund.Estimate.Changed = changed
+		// 计算收益率
+		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
+		estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
+		fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+		// 判断当日净值是否更新
+		fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
+	}
+
 }
 
 // 获得基金名称以及净值信息
@@ -271,11 +276,11 @@ func conditionChain(fund *Fund) bool {
 func isWatchTime(now time.Time) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	// 9 点到 21 点之间，每 15 分钟一次
-	if hour >= 9 && hour <= 20 && minute%15 == 0 {
+	// [09:00~22:00)，每 15 分钟一次
+	if hour >= 9 && hour <= 21 && minute%15 == 0 {
 		return true
 	}
-	// 14 点 45 至 15 点，每 2 分钟一次
+	// [14:45~15:00)，每 2 分钟一次
 	if hour == 14 && minute >= 45 && minute%2 == 0 {
 		return true
 	}
