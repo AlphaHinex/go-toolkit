@@ -390,33 +390,27 @@ func prettyPrint(fund Fund) string {
 		strings.Split(fund.Estimate.Datetime, " ")[1])
 
 	result := title + costRow
-	// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
+
 	now, _, _ := getDateTimes(fund)
 	if inOpeningBreakTime(now) {
+		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
-	} else {
-		// 开盘中显示实时估值
-		if isOpening(fund) {
-			if needToShowNetValue(fund) {
-				result += netRow
-			}
-			result += estimateRow
-		} else if needToShowNetValue(fund) {
-			// 交易日净值更新后，同时显示估值和最终净值
-			result += estimateRow + netRow
-		}
-	}
-
-	if needToShowHistory(fund) {
-		if !needToShowNetValue(fund) {
-			result += netRow
-		}
+	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
+		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		historyRow := ""
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
 			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
 		}
-		result += historyRow
+		result += netRow + estimateRow + historyRow
+	} else {
+		if isOpening(fund) {
+			// 开盘中显示实时估值
+			result += estimateRow
+		} else if needToShowNetValue(fund) {
+			// 交易日净值更新后，先显示最后的估值，再显示当日最终净值
+			result += estimateRow + netRow
+		}
 	}
 	return result + "\n"
 }
