@@ -57,8 +57,7 @@ func main() {
 				funds = append(funds, fund)
 			}
 			funds = filterFunds(funds)
-			// TODO: Implement sorting of funds
-			//sortFunds(funds)
+			sortFunds(funds)
 
 			var message strings.Builder
 			for _, fund := range funds {
@@ -434,6 +433,24 @@ func needToShowHistory(fund Fund) bool {
 		return true
 	}
 	return false
+}
+
+func sortFunds(funds []*Fund) {
+	for i := 0; i < len(funds)-1; i++ {
+		for j := i + 1; j < len(funds); j++ {
+			if funds[i].NetValue.Updated || funds[j].NetValue.Updated {
+				// 按照净值涨幅降序排序
+				if funds[i].NetValue.Margin < funds[j].NetValue.Margin {
+					funds[i], funds[j] = funds[j], funds[i]
+				}
+			} else {
+				// 按照估值涨幅降序排序
+				if funds[i].Estimate.Margin < funds[j].Estimate.Margin {
+					funds[i], funds[j] = funds[j], funds[i]
+				}
+			}
+		}
+	}
 }
 
 // 发送消息到飞书
