@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/go-yaml/yaml"
 	"testing"
 )
@@ -35,4 +36,8 @@ funds:
 	if !isSameDay(now, latestNetValueDate) {
 		t.Error("Expected net value date to be today")
 	}
+}
+
+func TestAddIndexRow(t *testing.T) {
+	fmt.Print(addIndexRow())
 }

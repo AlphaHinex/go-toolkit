@@ -63,9 +63,9 @@ func main() {
 			}
 			if len(strings.TrimSpace(message.String())) > 0 {
 				if configs.Token.Lark != "" {
-					sendToLark(configs.Token.Lark, strings.TrimSpace(message.String()))
+					sendToLark(configs.Token.Lark, strings.TrimSpace(addIndexRow()+message.String()))
 				} else {
-					log.Println(strings.TrimSpace(message.String()))
+					log.Println(strings.TrimSpace(addIndexRow() + message.String()))
 				}
 			}
 
@@ -282,7 +282,7 @@ func conditionChain(fund *Fund) bool {
 func showAll(now time.Time, fund *Fund) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	return isTradingDay(*fund) && ((hour == 12 && minute == 0) || (hour == 22 && minute == 0))
+	return isTradingDay(*fund) && ((hour == 12 && minute == 0) || (hour == 14 && minute == 50) || (hour == 22 && minute == 0))
 }
 
 func isTradingDay(fund Fund) bool {
@@ -461,6 +461,18 @@ func sortFunds(funds []*Fund) {
 			}
 		}
 	}
+}
+
+func addIndexRow() string {
+	indexUrl := "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f14&secids=1.000001,1.000300,0.399001,0.399006&_=1754373624121"
+	indexRes, _ := getFundHttpsResponse(indexUrl, nil)
+	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
+	indexRow := ""
+	for _, index := range indices {
+		entry := index.(map[string]interface{})
+		indexRow += fmt.Sprintf("%s：%.2f %.2f %.2f%%\n", entry["f14"], entry["f2"], entry["f4"], entry["f3"])
+	}
+	return indexRow + "\n"
 }
 
 // 发送消息到飞书
