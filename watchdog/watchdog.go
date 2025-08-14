@@ -261,6 +261,13 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	return result, ""
 }
 
+func getNow() (time.Time, *time.Location) {
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	// 获取当前时间并转换为东八区时间
+	now := time.Now().In(loc)
+	return now, loc
+}
+
 func filterFunds(funds []*Fund) []*Fund {
 	var result []*Fund
 	for _, f := range funds {
@@ -272,8 +279,20 @@ func filterFunds(funds []*Fund) []*Fund {
 }
 
 func conditionChain(fund *Fund) bool {
-	now, _, _ := getDateTimes(*fund)
-	return isWatchTime(now) && (isOpening(*fund) || needToShowNetValue(*fund))
+	now, _ := getNow()
+	return showAll(now, fund) ||
+		isWatchTime(now) && ((isOpening(*fund) && needToShowHistory(*fund)) || needToShowNetValue(*fund))
+}
+
+func showAll(now time.Time, fund *Fund) bool {
+	hour := now.Hour()
+	minute := now.Minute()
+	return isTradingDay(*fund) && ((hour == 12 && minute == 0) || (hour == 22 && minute == 0))
+}
+
+func isTradingDay(fund Fund) bool {
+	now, estimateTime, _ := getDateTimes(fund)
+	return isSameDay(now, estimateTime)
 }
 
 // 判断当前时间是否为监测时间点
@@ -296,13 +315,9 @@ func isWatchTime(now time.Time) bool {
 
 // 返回当前东八区时间，基金最近的估值时间，以及净值日期
 func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
-	loc, _ := time.LoadLocation("Asia/Shanghai")
-	// 获取当前时间并转换为东八区时间
-	now := time.Now().In(loc)
-
+	now, loc := getNow()
 	// 获取估值时间
 	estimateTime, _ := time.ParseInLocation("2006-01-02 15:04", fund.Estimate.Datetime, loc)
-
 	// 获取净值日期
 	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
 	return now, estimateTime, netValueDate
@@ -310,8 +325,8 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 
 // 判断是否开盘中
 func isOpening(fund Fund) bool {
-	now, estimateTime, _ := getDateTimes(fund)
-	if isSameDay(now, estimateTime) && inOpeningHours(now) {
+	now, _ := getNow()
+	if isTradingDay(fund) && inOpeningHours(now) {
 		if verbose {
 			log.Printf("开盘中 %s\n", fund.Name)
 		}
@@ -325,11 +340,11 @@ func isOpening(fund Fund) bool {
 }
 
 func needToShowNetValue(fund Fund) bool {
-	now, estimateTime, netValueDate := getDateTimes(fund)
-	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
+	now, _, netValueDate := getDateTimes(fund)
+	if isTradingDay(fund) && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
-	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) &&
+	} else if isTradingDay(fund) && isSameDay(now, netValueDate) &&
 		!fund.Ended && fund.NetValue.Updated {
 		log.Printf("%s 今日净值已更新\n", fund.Name)
 		return true
