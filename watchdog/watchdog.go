@@ -116,6 +116,10 @@ func watchFund(fund *Fund) {
 	fund.NetValue = *netValue
 
 	now, _, latestNetValueDate := getDateTimes(*fund)
+	if !isSameDay(now, latestNetValueDate) {
+		fund.Ended = false
+	}
+
 	if isWatchTime(now) {
 		// 获取实时估算净值
 		estimate := getFundRealtimeEstimate(fund.Code)
@@ -129,7 +133,6 @@ func watchFund(fund *Fund) {
 		// 判断当日净值是否更新
 		fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	}
-
 }
 
 // 获得基金名称以及净值信息
@@ -164,11 +167,10 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 
 	var e Estimate
 	_ = json.Unmarshal([]byte(matches[1]), &e)
-	//if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
-	//	// TODO 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
-	//	panic(err.Error())
-	//	return nil
-	//}
+	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
+		// 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
+		log.Println(fundCode, "未获取到实时估值数据", bodyStr)
+	}
 	return &e
 }
 
@@ -330,7 +332,7 @@ func needToShowNetValue(fund Fund) bool {
 		log.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
 		return true
 	} else {
-		log.Printf("非开盘日不显示净值 %s\n", fund.Name)
+		log.Printf("无需显示净值 %s\n", fund.Name)
 		return false
 	}
 }
