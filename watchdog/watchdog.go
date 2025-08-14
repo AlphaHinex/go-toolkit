@@ -123,14 +123,14 @@ func watchFund(fund *Fund) {
 	if isWatchTime(now) {
 		// 获取实时估算净值
 		estimate := getFundRealtimeEstimate(fund.Code)
-		changed := !(fund.Estimate.Datetime == estimate.Datetime)
-		fund.Estimate = *estimate
-		fund.Estimate.Changed = changed
-		// 计算收益率
+		if estimate != nil {
+			changed := !(estimate.Datetime == fund.Estimate.Datetime)
+			fund.Estimate = *estimate
+			fund.Estimate.Changed = changed
+			estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
+			fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+		}
 		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
-		estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
-		fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
-		// 判断当日净值是否更新
 		fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	}
 }
@@ -325,14 +325,16 @@ func isOpening(fund Fund) bool {
 func needToShowNetValue(fund Fund) bool {
 	now, estimateTime, netValueDate := getDateTimes(fund)
 	if isSameDay(now, estimateTime) && inOpeningBreakTime(now) && fund.Estimate.Changed {
-		log.Printf("交易日午休且最新估值已更新 %s\n", fund.Name)
+		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
 	} else if isSameDay(now, estimateTime) && isSameDay(now, netValueDate) &&
-		!fund.Ended && (fund.NetValue.Updated || fund.Estimate.Changed) {
-		log.Printf("交易日收盘且估值或净值更新后 %s\n", fund.Name)
+		!fund.Ended && fund.NetValue.Updated {
+		log.Printf("%s 今日净值已更新\n", fund.Name)
 		return true
 	} else {
-		log.Printf("无需显示净值 %s\n", fund.Name)
+		if verbose {
+			log.Printf("无需显示净值 %s\n", fund.Name)
+		}
 		return false
 	}
 }
