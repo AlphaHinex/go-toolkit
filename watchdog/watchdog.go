@@ -110,14 +110,19 @@ func writeConfigs(configFilePath string, configs *Config) {
 }
 
 func watchFund(fund *Fund) {
-	// 获取基金净值
+	// 获取基金最新净值
 	name, netValue := getFundNetValue(fund.Code)
 	fund.Name = name
 	fund.NetValue = *netValue
-
 	now, _, latestNetValueDate := getDateTimes(*fund)
+
 	if !isSameDay(now, latestNetValueDate) {
 		fund.Ended = false
+	} else {
+		fund.NetValue.Updated = true
+	}
+	if fund.Cost > 0 {
+		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
 	}
 
 	if isWatchTime(now) {
@@ -130,8 +135,6 @@ func watchFund(fund *Fund) {
 			estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
 			fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
 		}
-		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
-		fund.NetValue.Updated = isSameDay(now, latestNetValueDate)
 	}
 }
 
