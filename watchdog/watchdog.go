@@ -38,11 +38,6 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
-			&cli.StringFlag{
-				Name:     "lark-webhook-token",
-				Usage:    "Lark webhook token for notifications",
-				Required: false,
-			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			verbose = cCtx.Bool("verbose")
