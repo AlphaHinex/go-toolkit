@@ -434,6 +434,12 @@ func prettyPrint(fund Fund) string {
 func needToShowHistory(fund Fund) bool {
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
+	if !(fund.NetValue.Margin+estimateMargin > 0 || (fund.NetValue.Margin+estimateMargin < -1 && fund.NetValue.Margin*estimateMargin > 0)) {
+		// 不满足下面任一条件时，不显示历史
+		// 1. 前日净值+当日估值涨幅为正
+		// 2. 前日净值及当日估值均下跌，且总跌幅大于1%
+		return false
+	}
 	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 {
 		log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
 		return true
