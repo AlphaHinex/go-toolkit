@@ -270,13 +270,14 @@ func filterFunds(funds []*Fund) []*Fund {
 			result = append(result, f)
 		}
 	}
+	log.Printf("Filter funds from %d to %d\n", len(funds), len(result))
 	return result
 }
 
 func conditionChain(fund *Fund) bool {
 	now, _ := getNow()
 	return showAll(now, fund) ||
-		isWatchTime(now) && ((isOpening(*fund) && needToShowHistory(*fund)) || needToShowNetValue(*fund))
+		(isWatchTime(now) && ((isOpening(*fund) && needToShowHistory(*fund)) || needToShowNetValue(*fund)))
 }
 
 func showAll(now time.Time, fund *Fund) bool {
