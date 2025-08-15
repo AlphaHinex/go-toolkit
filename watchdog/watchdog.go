@@ -341,6 +341,9 @@ func needToShowNetValue(fund Fund) bool {
 	if isTradingDay(fund) && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
+	} else if isTradingDay(fund) && !isOpening(fund) && fund.Estimate.Changed {
+		log.Printf("%s 已更新下午最新估值\n", fund.Name)
+		return true
 	} else if isTradingDay(fund) && isSameDay(now, netValueDate) &&
 		!fund.Ended && fund.NetValue.Updated {
 		log.Printf("%s 今日净值已更新\n", fund.Name)
