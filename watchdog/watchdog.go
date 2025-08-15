@@ -265,8 +265,9 @@ func getNow() (time.Time, *time.Location) {
 
 func filterFunds(funds []*Fund) []*Fund {
 	var result []*Fund
+	now, _ := getNow()
 	for _, f := range funds {
-		if conditionChain(f) {
+		if showAll(now, f) || conditionChain(f) {
 			result = append(result, f)
 		}
 	}
@@ -276,15 +277,15 @@ func filterFunds(funds []*Fund) []*Fund {
 
 func conditionChain(fund *Fund) bool {
 	now, _ := getNow()
-	return showAll(now, fund) ||
-		(isWatchTime(now) && ((isOpening(*fund) && needToShowHistory(*fund)) || needToShowNetValue(*fund)))
+	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
+	return isWatchTime(now) && ((isOpening(*fund) && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
 }
 
 func showAll(now time.Time, fund *Fund) bool {
 	hour := now.Hour()
 	minute := now.Minute()
 	return isTradingDay(*fund) &&
-		((hour == 12 && minute == 0) || (hour == 14 && minute == 50) || (hour == 22 && minute == 0) || (isOpening(*fund) && minute == 30))
+		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 45) || (hour == 22 && minute == 0))
 }
 
 func isTradingDay(fund Fund) bool {
@@ -302,9 +303,6 @@ func isWatchTime(now time.Time) bool {
 	}
 	// [14:45~15:00)，每 2 分钟一次
 	if hour == 14 && minute >= 45 && minute%2 == 0 {
-		return true
-	}
-	if verbose {
 		return true
 	}
 	return false
