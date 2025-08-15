@@ -271,7 +271,9 @@ func filterFunds(funds []*Fund) []*Fund {
 			result = append(result, f)
 		}
 	}
-	log.Printf("Filter funds from %d to %d\n", len(funds), len(result))
+	if verbose {
+		log.Printf("Filter funds from %d to %d\n", len(funds), len(result))
+	}
 	return result
 }
 
