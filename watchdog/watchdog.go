@@ -282,7 +282,8 @@ func conditionChain(fund *Fund) bool {
 func showAll(now time.Time, fund *Fund) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	return isTradingDay(*fund) && ((hour == 12 && minute == 0) || (hour == 14 && minute == 50) || (hour == 22 && minute == 0))
+	return isTradingDay(*fund) &&
+		((hour == 12 && minute == 0) || (hour == 14 && minute == 50) || (hour == 22 && minute == 0) || (isOpening(*fund) && minute == 30))
 }
 
 func isTradingDay(fund Fund) bool {
