@@ -477,7 +477,7 @@ func addIndexRow() string {
 	indexRow := ""
 	for _, index := range indices {
 		entry := index.(map[string]interface{})
-		indexRow += fmt.Sprintf("%s：%.2f %.2f %.2f%%\n", entry["f14"], entry["f2"], entry["f4"], entry["f3"])
+		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], upOrDown(entry["f3"].(string)))
 	}
 	return indexRow + "\n"
 }
