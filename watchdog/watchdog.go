@@ -287,7 +287,7 @@ func showAll(now time.Time, fund *Fund) bool {
 	hour := now.Hour()
 	minute := now.Minute()
 	return isTradingDay(*fund) &&
-		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 48) || (hour == 22 && minute == 3))
+		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 48) || (hour == 21 && minute == 48))
 }
 
 func isTradingDay(fund Fund) bool {
@@ -485,7 +485,7 @@ func addIndexRow() string {
 	indexRes, _ := getFundHttpsResponse(indexUrl, nil)
 	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
 	now, _ := getNow()
-	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04:05"))
+	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04"))
 	for _, index := range indices {
 		entry := index.(map[string]interface{})
 		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], upOrDown(fmt.Sprint(entry["f3"])))
