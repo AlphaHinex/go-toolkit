@@ -429,7 +429,13 @@ func prettyPrint(fund Fund) string {
 			// 开盘中显示实时估值
 			result += estimateRow
 		} else if needToShowNetValue(fund) {
-			// 交易日净值更新后，先显示最后的估值，再显示当日最终净值
+			if fund.NetValue.Updated {
+				// 交易日净值更新后，先显示最后的估值，再显示当日最终净值
+				result += estimateRow + netRow
+			} else {
+				result += netRow + estimateRow
+			}
+		} else if showAll(now, &fund) {
 			result += estimateRow + netRow
 		}
 	}
