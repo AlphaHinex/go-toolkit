@@ -287,7 +287,7 @@ func showAll(now time.Time, fund *Fund) bool {
 	hour := now.Hour()
 	minute := now.Minute()
 	return isTradingDay(*fund) &&
-		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 45) || (hour == 22 && minute == 0))
+		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 48) || (hour == 22 && minute == 3))
 }
 
 func isTradingDay(fund Fund) bool {
