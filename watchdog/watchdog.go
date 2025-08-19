@@ -484,7 +484,8 @@ func addIndexRow() string {
 	indexUrl := "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f14&secids=1.000001,1.000300,0.399001,0.399006&_=1754373624121"
 	indexRes, _ := getFundHttpsResponse(indexUrl, nil)
 	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
-	indexRow := ""
+	now, _ := getNow()
+	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04:05"))
 	for _, index := range indices {
 		entry := index.(map[string]interface{})
 		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], upOrDown(fmt.Sprint(entry["f3"])))
