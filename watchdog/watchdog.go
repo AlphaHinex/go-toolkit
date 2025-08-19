@@ -299,8 +299,8 @@ func isTradingDay(fund Fund) bool {
 func isWatchTime(now time.Time) bool {
 	hour := now.Hour()
 	minute := now.Minute()
-	// [09:00~22:00)，每 15 分钟一次
-	if hour >= 9 && hour <= 21 && minute%15 == 0 {
+	// [09:03~22:03)，每 15 分钟一次，错开整点避免通知限流
+	if hour >= 9 && hour <= 21 && minute%15 == 3 {
 		return true
 	}
 	// [14:45~15:00)，每 2 分钟一次
