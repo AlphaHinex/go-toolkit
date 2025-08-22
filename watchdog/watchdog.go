@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -154,7 +154,7 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
 	re := regexp.MustCompile(`jsonpgz\((.*?)\);`)
 	matches := re.FindStringSubmatch(bodyStr)
@@ -223,7 +223,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	// 1. 创建自定义Transport（支持HTTPS）
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // 生产环境应设为false并配置CA证书
+			InsecureSkipVerify: false, // 生产环境应设为false并配置CA证书
 		},
 	}
 
@@ -233,7 +233,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	// 3. 创建请求对象
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 
 	// 4. 设置请求头
@@ -248,7 +248,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, string(body)
