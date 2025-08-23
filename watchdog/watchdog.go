@@ -70,10 +70,15 @@ func main() {
 				}
 			}
 			if len(strings.TrimSpace(message.String())) > 0 {
+				msg := strings.TrimSpace(addIndexRow() + message.String())
+				if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
+					log.Println(msg)
+				}
 				if configs.Token.Lark != "" {
-					sendToLark(configs.Token.Lark, strings.TrimSpace(addIndexRow()+message.String()))
-				} else {
-					log.Println(strings.TrimSpace(addIndexRow() + message.String()))
+					sendToLark(configs.Token.Lark, msg)
+				}
+				if configs.Token.DingTalk != "" {
+					sendToDingTalk(configs.Token.DingTalk, msg)
 				}
 			}
 
@@ -202,6 +207,9 @@ func upOrDown(value string) string {
 	v, _ := strconv.ParseFloat(value, 64)
 	if v > 0 {
 		return fmt.Sprintf("🔺%.2f%%", v)
+	}
+	if v == 0 {
+		return fmt.Sprintf(" %.2f%%", v)
 	}
 	return fmt.Sprintf("▼ %.2f%%", v)
 }
@@ -426,7 +434,7 @@ func prettyPrint(fund Fund) string {
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
-		historyRow := ""
+		historyRow := "历史净值：\n"
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
 			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
@@ -493,7 +501,7 @@ func addIndexRow() string {
 	indexRes, _ := getFundHttpsResponse(indexUrl, nil)
 	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
 	now, _ := getNow()
-	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04"))
+	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04:05"))
 	for _, index := range indices {
 		entry := index.(map[string]interface{})
 		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], upOrDown(fmt.Sprint(entry["f3"])))
@@ -526,10 +534,42 @@ func sendToLark(larkWebhookToken, msg string) {
 	defer resp.Body.Close()
 }
 
+func sendToDingTalk(dingTalkToken, msg string) {
+	payload := strings.NewReader(`{
+    "text": {
+        "content": "` + msg + `"
+    },
+    "msgtype": "text"
+}`)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	_, err = io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+}
+
 type Config struct {
 	Funds map[string]*Fund `yaml:"funds"`
 	Token struct {
-		Lark string `yaml:"lark"`
+		Lark     string `yaml:"lark"`
+		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
 }
 
