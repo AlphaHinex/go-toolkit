@@ -535,15 +535,20 @@ func sendToLark(larkWebhookToken, msg string) {
 }
 
 func sendToDingTalk(dingTalkToken, msg string) {
-	payload := strings.NewReader(`{
-    "text": {
-        "content": "` + msg + `"
-    },
-    "msgtype": "text"
-}`)
-
+	payload := map[string]interface{}{
+		"msgtype": "text",
+		"text": map[string]string{
+			"content": msg,
+		},
+	}
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Println("Failed to marshal payload:", err)
+		return
+	}
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", "https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, payload)
+	req, err := http.NewRequest("POST",
+		"https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, bytes.NewBuffer(jsonPayload))
 
 	if err != nil {
 		fmt.Println(err)
@@ -582,7 +587,7 @@ type Fund struct {
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
-	} `yaml:"-"` // 基金净值收益率
+	} `yaml:"-"`              // 基金净值收益率
 	Ended bool `yaml:"ended"` // 当日监测是否已结束
 }
 
