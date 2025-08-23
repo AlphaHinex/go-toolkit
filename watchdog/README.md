@@ -58,3 +58,9 @@ token:
 估值：1.5244 ▼ -1.01% -5.19% 15:00
 净值：1.5222 ▼ -1.16% -5.32% 2025-08-22
 ```
+
+接口参考
+------
+
+- https://github.com/kouchao/TiantianFundApi
+- https://github.com/x2rr/funds/
