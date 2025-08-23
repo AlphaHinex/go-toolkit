@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"github.com/go-yaml/yaml"
 	"testing"
+	"time"
 )
 
 func TestGetFundNetValue(t *testing.T) {
@@ -20,9 +20,8 @@ func TestGetFundNetValue(t *testing.T) {
 func TestNetValueUpdated(t *testing.T) {
 	yamlText := `
 funds:
-  "501203":
-    name: 易方达创新未来混合(LOF)
-    cost: 0.9294
+  501203:
+    cost: 1.0000
     net:
       date: "2025-08-14"
       updated: false
@@ -32,12 +31,17 @@ funds:
     ended: true`
 	var config Config
 	_ = yaml.Unmarshal([]byte(yamlText), &config)
-	now, _, latestNetValueDate := getDateTimes(*config.Funds["501203"])
+	_, _, latestNetValueDate := getDateTimes(*config.Funds["501203"])
+	_, loc := getNow()
+	now, _ := time.ParseInLocation("2006-01-02 15:04", "2025-08-14 18:00", loc)
 	if !isSameDay(now, latestNetValueDate) {
 		t.Error("Expected net value date to be today")
 	}
 }
 
 func TestAddIndexRow(t *testing.T) {
-	fmt.Print(addIndexRow())
+	index := addIndexRow()
+	if len(index) == 0 {
+		t.Error("Expected index to be non-nil")
+	}
 }

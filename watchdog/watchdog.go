@@ -19,18 +19,25 @@ import (
 )
 
 var verbose bool
+var watchNow bool
 
 func main() {
 	app := &cli.App{
 		Name:    "watchdog",
 		Usage:   "Watchdog of fund",
-		Version: "v2.5.1",
+		Version: "v2.6.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "config-file",
 				Aliases:  []string{"c"},
 				Usage:    "Path to the config YAML file containing fund costs, tokens, etc.",
 				Required: true,
+			},
+			&cli.BoolFlag{
+				Name:     "watch-now",
+				Usage:    "Watch funds now, bypassing the predefined watch time points.",
+				Value:    false,
+				Required: false,
 			},
 			&cli.BoolFlag{
 				Name:     "verbose",
@@ -40,8 +47,9 @@ func main() {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			verbose = cCtx.Bool("verbose")
 			configFilePath := cCtx.String("config-file")
+			verbose = cCtx.Bool("verbose")
+			watchNow = cCtx.Bool("watch-now")
 			configs := readConfigs(configFilePath)
 
 			fundsMap := configs.Funds
@@ -119,7 +127,7 @@ func watchFund(fund *Fund) {
 		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
 	}
 
-	if isWatchTime(now) {
+	if watchNow || isWatchTime(now) {
 		// 获取实时估算净值
 		estimate := getFundRealtimeEstimate(fund.Code)
 		if estimate != nil {
