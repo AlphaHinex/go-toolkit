@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,23 @@ import (
 
 var verbose bool
 var watchNow bool
+
+var configTemplate = fmt.Sprintf(`
+funds:
+  008099: # 基金代码
+    cost: 1.6078 # 基金成本价
+  000083: 
+    cost: 5.1727
+
+stocks:
+  510210: # 股票代码
+    market: 1 # 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
+    low: 0.7 # 监控阈值低点 
+    high: 1.0 # 监控阈值高点
+
+token:
+  lark: xxxxxx # 飞书机器人 Webhook token，可选
+  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选`)
 
 func main() {
 	app := &cli.App{
@@ -31,7 +49,7 @@ func main() {
 				Name:     "config-file",
 				Aliases:  []string{"c"},
 				Usage:    "Path to the config YAML file containing fund costs, tokens, etc.",
-				Required: true,
+				Required: false,
 			},
 			&cli.BoolFlag{
 				Name:     "watch-now",
@@ -45,9 +63,33 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
+			&cli.BoolFlag{
+				Name:     "template",
+				Aliases:  []string{"t"},
+				Usage:    "Generate template file template.yaml in current path.",
+				Value:    false,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			needTemplate := cCtx.Bool("template")
 			configFilePath := cCtx.String("config-file")
+			if needTemplate || configFilePath == "" {
+				if configFilePath == "" {
+					log.Println("需指定配置文件，可基于自动生成的 template.yaml 调整。")
+				}
+				if runtime.GOOS == "windows" {
+					configTemplate = strings.ReplaceAll(configTemplate, "\n", "\r\n")
+				}
+				err := os.WriteFile("template.yaml", []byte(strings.TrimSpace(configTemplate)), 0644)
+				if err != nil {
+					log.Fatalf("生成配置文件模板失败: %v", err)
+				} else {
+					log.Println("生成配置文件模板成功！")
+				}
+				return nil
+			}
+
 			verbose = cCtx.Bool("verbose")
 			watchNow = cCtx.Bool("watch-now")
 			configs := readConfigs(configFilePath)
