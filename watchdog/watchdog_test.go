@@ -64,3 +64,17 @@ func TestQueryStreakInfo(t *testing.T) {
 		t.Error("Expected streak info to be non-empty")
 	}
 }
+
+func TestRetrieveLatestPrice(t *testing.T) {
+	s := Stock{
+		Code:   "510210",
+		Market: "1",
+		Low:    0.7,
+		High:   1.0,
+	}
+	s.retrieveLatestPrice()
+	fmt.Println(s.prettyPrint())
+	if s.Price == 0 {
+		t.Error("Expected latest price to be non-zero")
+	}
+}

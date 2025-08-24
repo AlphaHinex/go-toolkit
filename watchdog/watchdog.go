@@ -104,6 +104,23 @@ func main() {
 			funds = filterFunds(funds)
 			sortFunds(funds)
 
+			stocksMap := configs.Stocks
+			var stocks []*Stock
+			for key, stock := range stocksMap {
+				stock.Code = key
+				if stock.Market == "" {
+					stock.Market = "1" // 默认上证
+				}
+				if stock.Low == 0 || stock.High == 0 {
+					log.Printf("股票 %s 未设置低点和高点，跳过监控\n", stock.Code)
+					continue
+				}
+				stock.retrieveLatestPrice()
+				if stock.Price < stock.Low || stock.Price > stock.High {
+					stocks = append(stocks, stock)
+				}
+			}
+
 			var message strings.Builder
 			for _, fund := range funds {
 				message.WriteString(prettyPrint(*fund))
@@ -111,6 +128,10 @@ func main() {
 					fund.Ended = true
 				}
 			}
+			for _, stock := range stocks {
+				message.WriteString(stock.prettyPrint())
+			}
+
 			if len(strings.TrimSpace(message.String())) > 0 {
 				msg := strings.TrimSpace(addIndexRow() + message.String())
 				if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
@@ -616,8 +637,9 @@ func sendToDingTalk(dingTalkToken, msg string) {
 }
 
 type Config struct {
-	Funds map[string]*Fund `yaml:"funds"`
-	Token struct {
+	Funds  map[string]*Fund  `yaml:"funds"`
+	Stocks map[string]*Stock `yaml:"stocks"`
+	Token  struct {
 		Lark     string `yaml:"lark"`
 		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
@@ -713,4 +735,58 @@ type NetValue struct {
 	Margin  float64 `yaml:"-"`       // 净值涨跌幅百分比
 	Date    string  `yaml:"date"`    // 净值日期
 	Updated bool    `yaml:"updated"` // 是否已更新净值
+}
+
+type Stock struct {
+	Code     string    `yaml:"-"`        // 股票代码
+	Market   string    `yaml:"market"`   // 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
+	Name     string    `yaml:"name"`     // 股票名称
+	Low      float64   `yaml:"low"`      // 监控阈值低点
+	High     float64   `yaml:"high"`     // 监控阈值高点
+	Datetime time.Time `yaml:"datetime"` // 股票最新更新时间
+	Price    float64   `yaml:"price"`    // 股票最新价格
+}
+
+func (s *Stock) retrieveLatestPrice() {
+	// 获取股票最新价格
+	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
+		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
+		s.Market, s.Code)
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", reqUrl, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err = json.Unmarshal(body, &result); err != nil {
+		log.Println("Error unmarshalling JSON response:", err)
+	}
+	data := result["data"].(map[string]interface{})
+	s.Name = data["name"].(string)
+	trends := data["trends"].([]interface{})
+	lastRow := strings.Split(trends[len(trends)-1].(string), ",")
+	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
+	_, loc := getNow()
+	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], loc)
+}
+
+// 美化输出，示例如下：
+// 510210|上证指数ETF
+// 1.20 🔺1.00
+// or
+// 0.69 ▼ 0.70
+func (s *Stock) prettyPrint() string {
+	row := fmt.Sprintf("%s|%s\n", s.Code, s.Name)
+	if s.Price > s.High {
+		row += fmt.Sprintf("%.4f 🔺%.4f\n", s.Price, s.High)
+	} else if s.Price < s.Low {
+		row += fmt.Sprintf("%.4f ▼ %.4f\n", s.Price, s.Low)
+	} else {
+		row += fmt.Sprintf("%.4f (%.4f ~ %.4f)\n", s.Price, s.Low, s.High)
+	}
+	return row + "\n"
 }
