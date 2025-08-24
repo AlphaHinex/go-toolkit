@@ -116,7 +116,7 @@ func main() {
 					continue
 				}
 				stock.retrieveLatestPrice()
-				if stock.Price < stock.Low || stock.Price > stock.High {
+				if shouldShowAll(stock) || stock.Price < stock.Low || stock.Price > stock.High {
 					stocks = append(stocks, stock)
 				}
 			}
@@ -344,9 +344,8 @@ func getNow() (time.Time, *time.Location) {
 
 func filterFunds(funds []*Fund) []*Fund {
 	var result []*Fund
-	now, _ := getNow()
 	for _, f := range funds {
-		if showAll(now, f) || conditionChain(f) {
+		if shouldShowAll(f) || conditionChain(f) {
 			result = append(result, f)
 		}
 	}
@@ -362,16 +361,16 @@ func conditionChain(fund *Fund) bool {
 	return isWatchTime(now) && ((isOpening(*fund) && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
 }
 
-func showAll(now time.Time, fund *Fund) bool {
+// 根据当前时间判断是否需要显示全部金融产品信息
+// 满足一下任一条件时，显示全部信息：
+// 1. 如果是交易日的开盘时间，且当前分钟为 48 分钟
+// 2. 交易日收盘后的 21:48
+func shouldShowAll(product FinancialProduct) bool {
+	now, _ := getNow()
 	hour := now.Hour()
 	minute := now.Minute()
-	return isTradingDay(*fund) &&
-		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 48) || (hour == 21 && minute == 48))
-}
-
-func isTradingDay(fund Fund) bool {
-	now, estimateTime, _ := getDateTimes(fund)
-	return isSameDay(now, estimateTime)
+	return product.isTradingDay() &&
+		((product.isTradable() && minute == 48) || (hour == 21 && minute == 48))
 }
 
 // 判断当前时间是否为监测时间点
@@ -401,8 +400,7 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 
 // 判断是否开盘中
 func isOpening(fund Fund) bool {
-	now, _ := getNow()
-	if isTradingDay(fund) && inOpeningHours(now) {
+	if fund.isTradingDay() && inOpeningHours() {
 		if verbose {
 			log.Printf("开盘中 %s\n", fund.Name)
 		}
@@ -417,13 +415,13 @@ func isOpening(fund Fund) bool {
 
 func needToShowNetValue(fund Fund) bool {
 	now, _, netValueDate := getDateTimes(fund)
-	if isTradingDay(fund) && inOpeningBreakTime(now) && fund.Estimate.Changed {
+	if fund.isTradingDay() && inOpeningBreakTime(now) && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
-	} else if isTradingDay(fund) && !isOpening(fund) && fund.Estimate.Changed {
+	} else if fund.isTradingDay() && !isOpening(fund) && fund.Estimate.Changed {
 		log.Printf("%s 已更新下午最新估值\n", fund.Name)
 		return true
-	} else if isTradingDay(fund) && isSameDay(now, netValueDate) &&
+	} else if fund.isTradingDay() && isSameDay(now, netValueDate) &&
 		!fund.Ended && fund.NetValue.Updated {
 		log.Printf("%s 今日净值已更新\n", fund.Name)
 		return true
@@ -439,9 +437,10 @@ func isSameDay(t1, t2 time.Time) bool {
 	return t1.Year() == t2.Year() && t1.Month() == t2.Month() && t1.Day() == t2.Day()
 }
 
-func inOpeningHours(t time.Time) bool {
-	hour := t.Hour()
-	minute := t.Minute()
+func inOpeningHours() bool {
+	now, _ := getNow()
+	hour := now.Hour()
+	minute := now.Minute()
 
 	// 上午9:30-11:30
 	if (hour == 9 && minute >= 30) || (hour > 9 && hour < 11) || (hour == 11 && minute <= 30) {
@@ -517,7 +516,7 @@ func prettyPrint(fund Fund) string {
 			} else {
 				result += netRow + estimateRow
 			}
-		} else if showAll(now, &fund) {
+		} else if shouldShowAll(&fund) {
 			result += estimateRow + netRow
 		}
 	}
@@ -645,6 +644,11 @@ type Config struct {
 	} `yaml:"token"`
 }
 
+type FinancialProduct interface {
+	isTradingDay() bool // 当天是否是交易日
+	isTradable() bool   // 当前是否可交易
+}
+
 type Fund struct {
 	Code     string   `yaml:"-"`        // 基金代码
 	Name     string   `yaml:"name"`     // 基金名称
@@ -660,6 +664,15 @@ type Fund struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
 	} `yaml:"streak"` // 连续上涨或下跌信息
+}
+
+func (f *Fund) isTradingDay() bool {
+	now, estimateTime, _ := getDateTimes(*f)
+	return isSameDay(now, estimateTime)
+}
+
+func (f *Fund) isTradable() bool {
+	return f.isTradingDay() && inOpeningHours()
 }
 
 // 查询最近一个月的连续上涨或下跌信息
@@ -772,6 +785,15 @@ func (s *Stock) retrieveLatestPrice() {
 	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
 	_, loc := getNow()
 	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], loc)
+}
+
+func (s *Stock) isTradingDay() bool {
+	now, _ := getNow()
+	return isSameDay(s.Datetime, now)
+}
+
+func (s *Stock) isTradable() bool {
+	return s.isTradingDay() && inOpeningHours()
 }
 
 // 美化输出，示例如下：
