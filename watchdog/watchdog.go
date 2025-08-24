@@ -400,8 +400,10 @@ func inOpeningBreakTime(t time.Time) bool {
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
-// 估值：1.4914 ▼ -0.32% -2.25% 15:00
 // 净值：1.4969 🔺0.05% -1.89% 2025-08-08
+// 估值：1.4914 ▼ -0.32% -2.25% 15:00
+// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 历史净值：
 // 月度：1.4818 → 1.5752
 // 季度：1.4325 → 1.5752
 // 半年：...
@@ -433,12 +435,13 @@ func prettyPrint(fund Fund) string {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
-		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
-		historyRow := "历史净值：\n"
+		fund.queryStreakInfo()
+		historyRow := fmt.Sprintf("%s\n历史净值：\n", fund.Streak.Info)
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
 			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
 		}
+		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
 		if isOpening(fund) {
@@ -587,8 +590,72 @@ type Fund struct {
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
-	} `yaml:"-"`              // 基金净值收益率
-	Ended bool `yaml:"ended"` // 当日监测是否已结束
+	} `yaml:"-"` // 基金净值收益率
+	Ended  bool `yaml:"ended"` // 当日监测是否已结束
+	Streak struct {
+		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
+		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
+	} `yaml:"streak"` // 连续上涨或下跌信息
+}
+
+// 查询最近一个月的连续上涨或下跌信息
+// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 连续 2 天 ▼ 2.05% 1.5752 → 1.4818
+func (f *Fund) queryStreakInfo() {
+	now, _ := getNow()
+	if f.Streak.Info != "" && isSameDay(f.Streak.UpdateDate, now) {
+		return // 已经查询过了
+	}
+	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+		url.Values{"FCODE": {f.Code}, "RANGE": {"y"}})
+	riseStreak, fallStreak := 0, 0
+	netValueFrom, netValueTo, netValueMargin := 0.0, 0.0, 0.0
+	for i := len(res["data"].([]interface{})) - 1; i >= 0; i-- {
+		data := res["data"].([]interface{})[i]
+		margin, _ := strconv.ParseFloat(data.(map[string]interface{})["JZZZL"].(string), 64)
+		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
+		if riseStreak == 0 && fallStreak == 0 {
+			netValueMargin = margin
+			netValueFrom, netValueTo = value, value
+			// 最近一天如果涨跌幅为 0，直接跳过，看前一日涨跌状态
+			if margin > 0 {
+				riseStreak++
+			} else if margin < 0 {
+				fallStreak++
+			}
+		} else {
+			if margin > 0 {
+				if riseStreak > 0 {
+					riseStreak++
+					netValueFrom = value
+					netValueMargin += margin
+				} else {
+					break
+				}
+			} else if margin < 0 {
+				if fallStreak > 0 {
+					fallStreak++
+					netValueFrom = value
+					netValueMargin += margin
+				} else {
+					break
+				}
+			} else if margin == 0 {
+				// 中间如果有一天涨跌幅为 0，继续计算连续上涨或下跌
+				if riseStreak > 0 {
+					riseStreak++
+				} else if fallStreak > 0 {
+					fallStreak++
+				}
+			}
+		}
+	}
+	if riseStreak > 0 {
+		f.Streak.Info = fmt.Sprintf("连续 %d 天 🔺%.2f%% %.4f → %.4f", riseStreak, netValueMargin, netValueFrom, netValueTo)
+	} else if fallStreak > 0 {
+		f.Streak.Info = fmt.Sprintf("连续 %d 天 ▼ %.2f%% %.4f → %.4f", fallStreak, netValueMargin, netValueFrom, netValueTo)
+	}
+	f.Streak.UpdateDate = now
 }
 
 // Estimate 实时估值结构体

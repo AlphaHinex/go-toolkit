@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/go-yaml/yaml"
 	"testing"
 	"time"
@@ -51,4 +52,15 @@ func TestSendToDingTalk(t *testing.T) {
 	message := `hinex
 2025-08-22 15:03`
 	sendToDingTalk(token, message)
+}
+
+func TestQueryStreakInfo(t *testing.T) {
+	f := Fund{
+		Code: "008099",
+	}
+	f.queryStreakInfo()
+	fmt.Print(f.Streak)
+	if f.Streak.Info == "" {
+		t.Error("Expected streak info to be non-empty")
+	}
 }
