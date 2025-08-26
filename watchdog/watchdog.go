@@ -359,7 +359,7 @@ func filterFunds(funds []*Fund) []*Fund {
 func conditionChain(fund *Fund) bool {
 	now, _ := getNow()
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
-	return isWatchTime(now) && ((isOpening(*fund) && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
+	return isWatchTime(now) && ((fund.isTradable() && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
 }
 
 // 根据当前时间判断是否需要显示全部金融产品信息
@@ -399,27 +399,12 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 	return now, estimateTime, netValueDate
 }
 
-// 判断是否开盘中
-func isOpening(fund Fund) bool {
-	if fund.isTradingDay() && inOpeningHours() {
-		if verbose {
-			log.Printf("开盘中 %s\n", fund.Name)
-		}
-		return true
-	} else {
-		if verbose {
-			log.Printf("非开盘时间 %s\n", fund.Name)
-		}
-		return false
-	}
-}
-
 func needToShowNetValue(fund Fund) bool {
 	now, _, netValueDate := getDateTimes(fund)
-	if fund.isTradingDay() && inOpeningBreakTime(now) && fund.Estimate.Changed {
+	if fund.isTradingDay() && inOpeningBreakTime() && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
-	} else if fund.isTradingDay() && !isOpening(fund) && fund.Estimate.Changed {
+	} else if fund.isTradingDay() && !fund.isTradable() && fund.Estimate.Changed {
 		log.Printf("%s 已更新下午最新估值\n", fund.Name)
 		return true
 	} else if fund.isTradingDay() && isSameDay(now, netValueDate) &&
@@ -454,9 +439,10 @@ func inOpeningHours() bool {
 	return false
 }
 
-func inOpeningBreakTime(t time.Time) bool {
-	hour := t.Hour()
-	minute := t.Minute()
+func inOpeningBreakTime() bool {
+	now, _ := getNow()
+	hour := now.Hour()
+	minute := now.Minute()
 	return (hour == 11 && minute >= 30) || (hour == 12)
 }
 
@@ -493,8 +479,7 @@ func prettyPrint(fund Fund) string {
 
 	result := title + costRow
 
-	now, _, _ := getDateTimes(fund)
-	if inOpeningBreakTime(now) {
+	if inOpeningBreakTime() {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
@@ -507,7 +492,7 @@ func prettyPrint(fund Fund) string {
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
-		if isOpening(fund) {
+		if fund.isTradable() {
 			// 开盘中显示实时估值
 			result += estimateRow
 		} else if needToShowNetValue(fund) {
@@ -525,21 +510,19 @@ func prettyPrint(fund Fund) string {
 }
 
 func needToShowHistory(fund Fund) bool {
-	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
-	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
-	if !(fund.NetValue.Margin+estimateMargin > 0 || (fund.NetValue.Margin+estimateMargin < -1 && fund.NetValue.Margin*estimateMargin > 0)) {
-		// 不满足下面任一条件时，不显示历史
-		// 1. 前日净值+当日估值涨幅为正
-		// 2. 前日净值及当日估值均下跌，且总跌幅大于1%
-		return false
-	}
-	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 {
-		log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		return true
-	}
-	if isOpening(fund) && estimateMargin < -1 && estimateProfit < 0 {
-		log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		return true
+	if fund.isTradingDay() && (inOpeningHours() || inOpeningBreakTime()) {
+		estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
+		estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
+		if estimateMargin > 0 && estimateProfit > 0 && fund.NetValue.Margin+estimateMargin > 0 {
+			// 前日净值+当日估值涨幅为正时，可考虑卖出
+			log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			return true
+		}
+		if estimateMargin < 0 && estimateProfit < 0 && fund.NetValue.Margin+estimateMargin < -1 && fund.NetValue.Margin < 0 {
+			// 前日净值及当日估值均下跌，且总跌幅大于1%，可考虑买入
+			log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			return true
+		}
 	}
 	return false
 }
