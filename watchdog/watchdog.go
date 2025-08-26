@@ -116,6 +116,7 @@ func main() {
 					continue
 				}
 				stock.retrieveLatestPrice()
+				// 股票价格监视不关心监视时间点，只要超过阈值，每分钟都可发消息
 				if shouldShowAll(stock) || stock.Price < stock.Low || stock.Price > stock.High {
 					stocks = append(stocks, stock)
 				}
