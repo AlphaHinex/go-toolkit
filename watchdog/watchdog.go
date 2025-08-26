@@ -685,12 +685,12 @@ func (f *Fund) queryStreakInfo() {
 				fallStreak++
 			}
 		} else {
-			netValueFrom = value
 			if margin > 0 {
 				if riseStreak > 0 {
 					riseStreak++
 					netValueMargin += margin
 				} else {
+					netValueFrom = value
 					break
 				}
 			} else if margin < 0 {
@@ -698,6 +698,7 @@ func (f *Fund) queryStreakInfo() {
 					fallStreak++
 					netValueMargin += margin
 				} else {
+					netValueFrom = value
 					break
 				}
 			} else if margin == 0 {
