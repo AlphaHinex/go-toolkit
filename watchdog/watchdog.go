@@ -701,10 +701,10 @@ func (f *Fund) queryStreakInfo() {
 				fallStreak++
 			}
 		} else {
+			netValueFrom = value
 			if margin > 0 {
 				if riseStreak > 0 {
 					riseStreak++
-					netValueFrom = value
 					netValueMargin += margin
 				} else {
 					break
@@ -712,7 +712,6 @@ func (f *Fund) queryStreakInfo() {
 			} else if margin < 0 {
 				if fallStreak > 0 {
 					fallStreak++
-					netValueFrom = value
 					netValueMargin += margin
 				} else {
 					break
