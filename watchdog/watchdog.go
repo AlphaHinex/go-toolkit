@@ -115,9 +115,13 @@ func main() {
 					log.Printf("股票 %s 未设置低点和高点，跳过监控\n", stock.Code)
 					continue
 				}
+				lastPrice := stock.Price
 				stock.retrieveLatestPrice()
-				// 股票价格监视不关心监视时间点，只要超过阈值，每分钟都可发消息
-				if shouldShowAll(stock) || stock.Price < stock.Low || stock.Price > stock.High {
+				// 股票价格监视不关心监视时间点，只要开盘中超过阈值及上分钟值，每分钟都可发消息
+				if shouldShowAll(stock) ||
+					(stock.isTradable() &&
+						((stock.Price < stock.Low && stock.Price < lastPrice) ||
+							(stock.Price > stock.High && stock.Price > lastPrice))) {
 					stocks = append(stocks, stock)
 				}
 			}
