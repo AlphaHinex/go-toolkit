@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -21,17 +22,34 @@ import (
 var verbose bool
 var watchNow bool
 
+var configTemplate = fmt.Sprintf(`
+funds:
+  008099: # 基金代码
+    cost: 1.6078 # 基金成本价
+  000083: 
+    cost: 5.1727
+
+stocks:
+  510210: # 股票代码
+    market: 1 # 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
+    low: 0.7 # 监控阈值低点 
+    high: 1.0 # 监控阈值高点
+
+token:
+  lark: xxxxxx # 飞书机器人 Webhook token，可选
+  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选`)
+
 func main() {
 	app := &cli.App{
 		Name:    "watchdog",
 		Usage:   "Watchdog of fund",
-		Version: "v2.6.0",
+		Version: "v2.6.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "config-file",
 				Aliases:  []string{"c"},
 				Usage:    "Path to the config YAML file containing fund costs, tokens, etc.",
-				Required: true,
+				Required: false,
 			},
 			&cli.BoolFlag{
 				Name:     "watch-now",
@@ -45,9 +63,33 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
+			&cli.BoolFlag{
+				Name:     "template",
+				Aliases:  []string{"t"},
+				Usage:    "Generate template file template.yaml in current path.",
+				Value:    false,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			needTemplate := cCtx.Bool("template")
 			configFilePath := cCtx.String("config-file")
+			if needTemplate || configFilePath == "" {
+				if configFilePath == "" {
+					log.Println("需指定配置文件，可基于自动生成的 template.yaml 调整。")
+				}
+				if runtime.GOOS == "windows" {
+					configTemplate = strings.ReplaceAll(configTemplate, "\n", "\r\n")
+				}
+				err := os.WriteFile("template.yaml", []byte(strings.TrimSpace(configTemplate)), 0644)
+				if err != nil {
+					log.Fatalf("生成配置文件模板失败: %v", err)
+				} else {
+					log.Println("生成配置文件模板成功！")
+				}
+				return nil
+			}
+
 			verbose = cCtx.Bool("verbose")
 			watchNow = cCtx.Bool("watch-now")
 			configs := readConfigs(configFilePath)
@@ -62,6 +104,28 @@ func main() {
 			funds = filterFunds(funds)
 			sortFunds(funds)
 
+			stocksMap := configs.Stocks
+			var stocks []*Stock
+			for key, stock := range stocksMap {
+				stock.Code = key
+				if stock.Market == "" {
+					stock.Market = "1" // 默认上证
+				}
+				if stock.Low == 0 || stock.High == 0 {
+					log.Printf("股票 %s 未设置低点和高点，跳过监控\n", stock.Code)
+					continue
+				}
+				lastPrice := stock.Price
+				stock.retrieveLatestPrice()
+				// 股票价格监视不关心监视时间点，只要开盘中超过阈值及上分钟值，每分钟都可发消息
+				if shouldShowAll(stock) ||
+					(stock.isTradable() &&
+						((stock.Price < stock.Low && stock.Price < lastPrice) ||
+							(stock.Price > stock.High && stock.Price > lastPrice))) {
+					stocks = append(stocks, stock)
+				}
+			}
+
 			var message strings.Builder
 			for _, fund := range funds {
 				message.WriteString(prettyPrint(*fund))
@@ -69,6 +133,10 @@ func main() {
 					fund.Ended = true
 				}
 			}
+			for _, stock := range stocks {
+				message.WriteString(stock.prettyPrint())
+			}
+
 			if len(strings.TrimSpace(message.String())) > 0 {
 				msg := strings.TrimSpace(addIndexRow() + message.String())
 				if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
@@ -273,7 +341,11 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 }
 
 func getNow() (time.Time, *time.Location) {
-	loc, _ := time.LoadLocation("Asia/Shanghai")
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		// Windows 环境使用 time.LoadLocation 报 panic: time: missing Location in call to Time.In
+		loc = time.FixedZone("CST", 8*3600)
+	}
 	// 获取当前时间并转换为东八区时间
 	now := time.Now().In(loc)
 	return now, loc
@@ -281,9 +353,8 @@ func getNow() (time.Time, *time.Location) {
 
 func filterFunds(funds []*Fund) []*Fund {
 	var result []*Fund
-	now, _ := getNow()
 	for _, f := range funds {
-		if showAll(now, f) || conditionChain(f) {
+		if shouldShowAll(f) || conditionChain(f) {
 			result = append(result, f)
 		}
 	}
@@ -296,19 +367,19 @@ func filterFunds(funds []*Fund) []*Fund {
 func conditionChain(fund *Fund) bool {
 	now, _ := getNow()
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
-	return isWatchTime(now) && ((isOpening(*fund) && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
+	return isWatchTime(now) && ((fund.isTradable() && (estimateMargin > 0 || needToShowHistory(*fund))) || needToShowNetValue(*fund))
 }
 
-func showAll(now time.Time, fund *Fund) bool {
+// 根据当前时间判断是否需要显示全部金融产品信息
+// 满足一下任一条件时，显示全部信息：
+// 1. 如果是交易日的开盘时间，且当前分钟为 48 分钟
+// 2. 交易日收盘后的 21:48
+func shouldShowAll(product FinancialProduct) bool {
+	now, _ := getNow()
 	hour := now.Hour()
 	minute := now.Minute()
-	return isTradingDay(*fund) &&
-		((isOpening(*fund) && !inOpeningBreakTime(now) && minute == 48) || (hour == 21 && minute == 48))
-}
-
-func isTradingDay(fund Fund) bool {
-	now, estimateTime, _ := getDateTimes(fund)
-	return isSameDay(now, estimateTime)
+	return product.isTradingDay() &&
+		((product.isTradable() && minute == 48) || (hour == 21 && minute == 48))
 }
 
 // 判断当前时间是否为监测时间点
@@ -336,31 +407,15 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 	return now, estimateTime, netValueDate
 }
 
-// 判断是否开盘中
-func isOpening(fund Fund) bool {
-	now, _ := getNow()
-	if isTradingDay(fund) && inOpeningHours(now) {
-		if verbose {
-			log.Printf("开盘中 %s\n", fund.Name)
-		}
-		return true
-	} else {
-		if verbose {
-			log.Printf("非开盘时间 %s\n", fund.Name)
-		}
-		return false
-	}
-}
-
 func needToShowNetValue(fund Fund) bool {
 	now, _, netValueDate := getDateTimes(fund)
-	if isTradingDay(fund) && inOpeningBreakTime(now) && fund.Estimate.Changed {
+	if fund.isTradingDay() && inOpeningBreakTime() && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
-	} else if isTradingDay(fund) && !isOpening(fund) && fund.Estimate.Changed {
+	} else if fund.isTradingDay() && !fund.isTradable() && fund.Estimate.Changed {
 		log.Printf("%s 已更新下午最新估值\n", fund.Name)
 		return true
-	} else if isTradingDay(fund) && isSameDay(now, netValueDate) &&
+	} else if fund.isTradingDay() && isSameDay(now, netValueDate) &&
 		!fund.Ended && fund.NetValue.Updated {
 		log.Printf("%s 今日净值已更新\n", fund.Name)
 		return true
@@ -376,9 +431,10 @@ func isSameDay(t1, t2 time.Time) bool {
 	return t1.Year() == t2.Year() && t1.Month() == t2.Month() && t1.Day() == t2.Day()
 }
 
-func inOpeningHours(t time.Time) bool {
-	hour := t.Hour()
-	minute := t.Minute()
+func inOpeningHours() bool {
+	now, _ := getNow()
+	hour := now.Hour()
+	minute := now.Minute()
 
 	// 上午9:30-11:30
 	if (hour == 9 && minute >= 30) || (hour > 9 && hour < 11) || (hour == 11 && minute <= 30) {
@@ -391,17 +447,20 @@ func inOpeningHours(t time.Time) bool {
 	return false
 }
 
-func inOpeningBreakTime(t time.Time) bool {
-	hour := t.Hour()
-	minute := t.Minute()
+func inOpeningBreakTime() bool {
+	now, _ := getNow()
+	hour := now.Hour()
+	minute := now.Minute()
 	return (hour == 11 && minute >= 30) || (hour == 12)
 }
 
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
-// 估值：1.4914 ▼ -0.32% -2.25% 15:00
 // 净值：1.4969 🔺0.05% -1.89% 2025-08-08
+// 估值：1.4914 ▼ -0.32% -2.25% 15:00
+// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 历史净值：
 // 月度：1.4818 → 1.5752
 // 季度：1.4325 → 1.5752
 // 半年：...
@@ -428,20 +487,20 @@ func prettyPrint(fund Fund) string {
 
 	result := title + costRow
 
-	now, _, _ := getDateTimes(fund)
-	if inOpeningBreakTime(now) {
+	if inOpeningBreakTime() {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
-		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
-		historyRow := "历史净值：\n"
+		fund.queryStreakInfo()
+		historyRow := fmt.Sprintf("%s\n历史净值：\n", fund.Streak.Info)
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
 			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
 		}
+		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
-		if isOpening(fund) {
+		if fund.isTradable() {
 			// 开盘中显示实时估值
 			result += estimateRow
 		} else if needToShowNetValue(fund) {
@@ -451,7 +510,7 @@ func prettyPrint(fund Fund) string {
 			} else {
 				result += netRow + estimateRow
 			}
-		} else if showAll(now, &fund) {
+		} else if shouldShowAll(&fund) {
 			result += estimateRow + netRow
 		}
 	}
@@ -459,21 +518,19 @@ func prettyPrint(fund Fund) string {
 }
 
 func needToShowHistory(fund Fund) bool {
-	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
-	estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
-	if !(fund.NetValue.Margin+estimateMargin > 0 || (fund.NetValue.Margin+estimateMargin < -1 && fund.NetValue.Margin*estimateMargin > 0)) {
-		// 不满足下面任一条件时，不显示历史
-		// 1. 前日净值+当日估值涨幅为正
-		// 2. 前日净值及当日估值均下跌，且总跌幅大于1%
-		return false
-	}
-	if isOpening(fund) && estimateMargin > 0 && estimateProfit > 0 {
-		log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		return true
-	}
-	if isOpening(fund) && estimateMargin < -1 && estimateProfit < 0 {
-		log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
-		return true
+	if fund.isTradingDay() && (inOpeningHours() || inOpeningBreakTime()) {
+		estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
+		estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
+		if estimateMargin > 0 && estimateProfit > 0 && fund.NetValue.Margin+estimateMargin > 0 {
+			// 前日净值+当日估值涨幅为正时，可考虑卖出
+			log.Printf("%s 开盘中，且估值涨幅大于0(%f)；估值收益率大于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			return true
+		}
+		if estimateMargin < 0 && estimateProfit < 0 && fund.NetValue.Margin+estimateMargin < -1 && fund.NetValue.Margin < 0 {
+			// 前日净值及当日估值均下跌，且总跌幅大于1%，可考虑买入
+			log.Printf("%s 开盘中，且估值跌幅超1(%f)；估值收益率小于0(%f)\n", fund.Name, estimateMargin, estimateProfit)
+			return true
+		}
 	}
 	return false
 }
@@ -571,11 +628,17 @@ func sendToDingTalk(dingTalkToken, msg string) {
 }
 
 type Config struct {
-	Funds map[string]*Fund `yaml:"funds"`
-	Token struct {
+	Funds  map[string]*Fund  `yaml:"funds"`
+	Stocks map[string]*Stock `yaml:"stocks"`
+	Token  struct {
 		Lark     string `yaml:"lark"`
 		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
+}
+
+type FinancialProduct interface {
+	isTradingDay() bool // 当天是否是交易日
+	isTradable() bool   // 当前是否可交易
 }
 
 type Fund struct {
@@ -587,8 +650,81 @@ type Fund struct {
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
-	} `yaml:"-"`              // 基金净值收益率
-	Ended bool `yaml:"ended"` // 当日监测是否已结束
+	} `yaml:"-"` // 基金净值收益率
+	Ended  bool `yaml:"ended"` // 当日监测是否已结束
+	Streak struct {
+		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
+		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
+	} `yaml:"streak"` // 连续上涨或下跌信息
+}
+
+func (f *Fund) isTradingDay() bool {
+	now, estimateTime, _ := getDateTimes(*f)
+	return isSameDay(now, estimateTime)
+}
+
+func (f *Fund) isTradable() bool {
+	return f.isTradingDay() && inOpeningHours()
+}
+
+// 查询最近一个月的连续上涨或下跌信息
+// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 连续 2 天 ▼ 2.05% 1.5752 → 1.4818
+func (f *Fund) queryStreakInfo() {
+	now, _ := getNow()
+	if f.Streak.Info != "" && isSameDay(f.Streak.UpdateDate, now) {
+		return // 已经查询过了
+	}
+	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+		url.Values{"FCODE": {f.Code}, "RANGE": {"y"}})
+	riseStreak, fallStreak := 0, 0
+	netValueFrom, netValueTo, netValueMargin := 0.0, 0.0, 0.0
+	for i := len(res["data"].([]interface{})) - 1; i >= 0; i-- {
+		data := res["data"].([]interface{})[i]
+		margin, _ := strconv.ParseFloat(data.(map[string]interface{})["JZZZL"].(string), 64)
+		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
+		if riseStreak == 0 && fallStreak == 0 {
+			netValueMargin = margin
+			netValueFrom, netValueTo = value, value
+			// 最近一天如果涨跌幅为 0，直接跳过，看前一日涨跌状态
+			if margin > 0 {
+				riseStreak++
+			} else if margin < 0 {
+				fallStreak++
+			}
+		} else {
+			if margin > 0 {
+				if riseStreak > 0 {
+					riseStreak++
+					netValueMargin += margin
+				} else {
+					netValueFrom = value
+					break
+				}
+			} else if margin < 0 {
+				if fallStreak > 0 {
+					fallStreak++
+					netValueMargin += margin
+				} else {
+					netValueFrom = value
+					break
+				}
+			} else if margin == 0 {
+				// 中间如果有一天涨跌幅为 0，继续计算连续上涨或下跌
+				if riseStreak > 0 {
+					riseStreak++
+				} else if fallStreak > 0 {
+					fallStreak++
+				}
+			}
+		}
+	}
+	if riseStreak > 0 {
+		f.Streak.Info = fmt.Sprintf("连续 %d 天 🔺%.2f%% %.4f → %.4f", riseStreak, netValueMargin, netValueFrom, netValueTo)
+	} else if fallStreak > 0 {
+		f.Streak.Info = fmt.Sprintf("连续 %d 天 ▼ %.2f%% %.4f → %.4f", fallStreak, netValueMargin, netValueFrom, netValueTo)
+	}
+	f.Streak.UpdateDate = now
 }
 
 // Estimate 实时估值结构体
@@ -604,4 +740,67 @@ type NetValue struct {
 	Margin  float64 `yaml:"-"`       // 净值涨跌幅百分比
 	Date    string  `yaml:"date"`    // 净值日期
 	Updated bool    `yaml:"updated"` // 是否已更新净值
+}
+
+type Stock struct {
+	Code     string    `yaml:"-"`        // 股票代码
+	Market   string    `yaml:"market"`   // 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
+	Name     string    `yaml:"name"`     // 股票名称
+	Low      float64   `yaml:"low"`      // 监控阈值低点
+	High     float64   `yaml:"high"`     // 监控阈值高点
+	Datetime time.Time `yaml:"datetime"` // 股票最新更新时间
+	Price    float64   `yaml:"price"`    // 股票最新价格
+}
+
+func (s *Stock) retrieveLatestPrice() {
+	// 获取股票最新价格
+	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
+		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
+		s.Market, s.Code)
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", reqUrl, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err = json.Unmarshal(body, &result); err != nil {
+		log.Println("Error unmarshalling JSON response:", err)
+	}
+	data := result["data"].(map[string]interface{})
+	s.Name = data["name"].(string)
+	trends := data["trends"].([]interface{})
+	lastRow := strings.Split(trends[len(trends)-1].(string), ",")
+	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
+	_, loc := getNow()
+	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], loc)
+}
+
+func (s *Stock) isTradingDay() bool {
+	now, _ := getNow()
+	return isSameDay(s.Datetime, now)
+}
+
+func (s *Stock) isTradable() bool {
+	return s.isTradingDay() && inOpeningHours()
+}
+
+// 美化输出，示例如下：
+// 510210|上证指数ETF
+// 1.20 🔺1.00
+// or
+// 0.69 ▼ 0.70
+func (s *Stock) prettyPrint() string {
+	row := fmt.Sprintf("%s|%s\n", s.Code, s.Name)
+	if s.Price > s.High {
+		row += fmt.Sprintf("%.4f 🔺%.4f\n", s.Price, s.High)
+	} else if s.Price < s.Low {
+		row += fmt.Sprintf("%.4f ▼ %.4f\n", s.Price, s.Low)
+	} else {
+		row += fmt.Sprintf("%.4f (%.4f ~ %.4f)\n", s.Price, s.Low, s.High)
+	}
+	return row + "\n"
 }
