@@ -43,7 +43,7 @@ func main() {
 	app := &cli.App{
 		Name:    "watchdog",
 		Usage:   "Watchdog of fund",
-		Version: "v2.6.0",
+		Version: "v2.6.1",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "config-file",
