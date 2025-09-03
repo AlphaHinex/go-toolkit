@@ -78,3 +78,9 @@ func TestRetrieveLatestPrice(t *testing.T) {
 		t.Error("Expected latest price to be non-zero")
 	}
 }
+
+func TestUseEmojiNumber(t *testing.T) {
+	if useEmojiNumber(1234567890) != "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣0️⃣" {
+		t.Error("Expected emoji number is wrong")
+	}
+}

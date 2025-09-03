@@ -668,8 +668,8 @@ func (f *Fund) isTradable() bool {
 }
 
 // 查询最近一个月的连续上涨或下跌信息
-// 连续 3 天 🔺2.05% 1.4818 → 1.5752
-// 连续 2 天 ▼ 2.05% 1.5752 → 1.4818
+// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
+// 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
 func (f *Fund) queryStreakInfo() {
 	now, _ := getNow()
 	if f.Streak.Info != "" && isSameDay(f.Streak.UpdateDate, now) {
@@ -720,11 +720,26 @@ func (f *Fund) queryStreakInfo() {
 		}
 	}
 	if riseStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %d 天 🔺%.2f%% %.4f → %.4f", riseStreak, netValueMargin, netValueFrom, netValueTo)
+		f.Streak.Info = fmt.Sprintf("连续 %s 天 🔺%.2f%% %.4f ↗️ %.4f", useEmojiNumber(riseStreak), netValueMargin, netValueFrom, netValueTo)
 	} else if fallStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %d 天 ▼ %.2f%% %.4f → %.4f", fallStreak, netValueMargin, netValueFrom, netValueTo)
+		f.Streak.Info = fmt.Sprintf("连续 %s 天 ▼ %.2f%% %.4f ↘️ %.4f", useEmojiNumber(fallStreak), netValueMargin, netValueFrom, netValueTo)
 	}
 	f.Streak.UpdateDate = now
+}
+
+func useEmojiNumber(num int) string {
+	str := strconv.Itoa(num)
+	str = strings.ReplaceAll(str, "0", "0️⃣")
+	str = strings.ReplaceAll(str, "1", "1️⃣")
+	str = strings.ReplaceAll(str, "2", "2️⃣")
+	str = strings.ReplaceAll(str, "3", "3️⃣")
+	str = strings.ReplaceAll(str, "4", "4️⃣")
+	str = strings.ReplaceAll(str, "5", "5️⃣")
+	str = strings.ReplaceAll(str, "6", "6️⃣")
+	str = strings.ReplaceAll(str, "7", "7️⃣")
+	str = strings.ReplaceAll(str, "8", "8️⃣")
+	str = strings.ReplaceAll(str, "9", "9️⃣")
+	return str
 }
 
 // Estimate 实时估值结构体
