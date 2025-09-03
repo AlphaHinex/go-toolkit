@@ -459,10 +459,10 @@ func inOpeningBreakTime() bool {
 // 成本：1.5258
 // 净值：1.4969 🔺0.05% -1.89% 2025-08-08
 // 估值：1.4914 ▼ -0.32% -2.25% 15:00
-// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
 // 历史净值：
-// 月度：1.4818 → 1.5752
-// 季度：1.4325 → 1.5752
+// 月度：[1.4818, 1.5752]
+// 季度：[1.4325, 1.5752]
 // 半年：...
 // 一年：...
 // 三年：...
@@ -495,7 +495,7 @@ func prettyPrint(fund Fund) string {
 		historyRow := fmt.Sprintf("%s\n历史净值：\n", fund.Streak.Info)
 		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
 			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
-			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
+			historyRow += fmt.Sprintf("%s：[%.4f, %.4f]\n", strings.Split(s, "|")[1], min.Value, max.Value)
 		}
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
