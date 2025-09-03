@@ -457,7 +457,7 @@ func inOpeningBreakTime() bool {
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
-// 净值：1.4969 🔺0.05% -1.89% 2025-08-08
+// 净值：1.4969 🔺0.05% -1.89% 前日
 // 估值：1.4914 ▼ -0.32% -2.25% 15:00
 // 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
 // 历史净值：
@@ -474,11 +474,17 @@ func inOpeningBreakTime() bool {
 func prettyPrint(fund Fund) string {
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
 	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
+	now, loc := getNow()
+	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
+	netValueDateStr := "前日"
+	if isSameDay(now, netValueDate) {
+		netValueDateStr = "今日"
+	}
 	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
 		fund.NetValue.Value,
 		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
 		fund.Profit.Net,
-		fund.NetValue.Date)
+		netValueDateStr)
 	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
 		fund.Estimate.Value,
 		upOrDown(fund.Estimate.Margin),
