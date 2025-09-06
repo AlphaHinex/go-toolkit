@@ -518,12 +518,8 @@ func prettyPrint(fund Fund) string {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
-		fund.queryStreakInfo()
-		historyRow := fmt.Sprintf("%s\n历史净值：\n", fund.Streak.Info)
-		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
-			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
-			historyRow += fmt.Sprintf("%s：[%.4f, %.4f]\n", strings.Split(s, "|")[1], min.Value, max.Value)
-		}
+		estimateValue, _ := strconv.ParseFloat(fund.Estimate.Value, 64)
+		historyRow := fund.composeHistoryRow(estimateValue)
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
@@ -591,6 +587,74 @@ func addIndexRow() string {
 		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], upOrDown(fmt.Sprint(entry["f3"])))
 	}
 	return indexRow + "\n"
+}
+
+/**
+ * 查找某值在给定净值历史区间中所处的位置。
+ * 返回值：历史区间数组位置索引，在所属区间偏左还是偏右（小于 0 偏左，大于 0 偏右），是否超过边界值
+ */
+func positionInHistory(value float64, histories []HistoryNetValueRange) (int, int, bool) {
+	idx, leftOrRight, exceeded := -1, 0, false
+	for i, h := range histories {
+		if value >= h.min.Value && value <= h.max.Value {
+			idx = i
+			break
+		}
+	}
+	// 位于某区间内时，判断偏左还是偏右，并对对应侧的边界值进行向下穿透（下个历史数据区间对应侧边界值与当前区间一致时，idx 向下移动）
+	if idx > -1 {
+		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+			leftOrRight = -1
+		} else {
+			leftOrRight = 1
+		}
+		for i := idx; i < len(histories); i++ {
+			if leftOrRight > 0 {
+				if histories[i].max.Value == histories[i+1].max.Value {
+					idx++
+				} else {
+					break
+				}
+			} else {
+				if histories[i].min.Value == histories[i+1].min.Value {
+					idx++
+					break
+				}
+			}
+		}
+		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+			leftOrRight = -1
+		} else {
+			leftOrRight = 1
+		}
+	}
+	// 超过所有历史之区间
+	if idx == -1 {
+		idx = len(histories) - 1
+		exceeded = true
+		if value < histories[idx].min.Value {
+			leftOrRight = -1
+		}
+		if value > histories[idx].max.Value {
+			leftOrRight = 1
+		}
+	}
+	return idx, leftOrRight, exceeded
+}
+
+func useEmojiNumber(num int) string {
+	str := strconv.Itoa(num)
+	str = strings.ReplaceAll(str, "0", "0️⃣")
+	str = strings.ReplaceAll(str, "1", "1️⃣")
+	str = strings.ReplaceAll(str, "2", "2️⃣")
+	str = strings.ReplaceAll(str, "3", "3️⃣")
+	str = strings.ReplaceAll(str, "4", "4️⃣")
+	str = strings.ReplaceAll(str, "5", "5️⃣")
+	str = strings.ReplaceAll(str, "6", "6️⃣")
+	str = strings.ReplaceAll(str, "7", "7️⃣")
+	str = strings.ReplaceAll(str, "8", "8️⃣")
+	str = strings.ReplaceAll(str, "9", "9️⃣")
+	return str
 }
 
 // 发送消息到飞书
@@ -754,19 +818,52 @@ func (f *Fund) queryStreakInfo() {
 	f.Streak.UpdateDate = now
 }
 
-func useEmojiNumber(num int) string {
-	str := strconv.Itoa(num)
-	str = strings.ReplaceAll(str, "0", "0️⃣")
-	str = strings.ReplaceAll(str, "1", "1️⃣")
-	str = strings.ReplaceAll(str, "2", "2️⃣")
-	str = strings.ReplaceAll(str, "3", "3️⃣")
-	str = strings.ReplaceAll(str, "4", "4️⃣")
-	str = strings.ReplaceAll(str, "5", "5️⃣")
-	str = strings.ReplaceAll(str, "6", "6️⃣")
-	str = strings.ReplaceAll(str, "7", "7️⃣")
-	str = strings.ReplaceAll(str, "8", "8️⃣")
-	str = strings.ReplaceAll(str, "9", "9️⃣")
-	return str
+/**
+ * 生成历史净值区间行
+ * 包括历史净值连续涨跌信息
+ * 以及不同阶段的历史净值区间
+ * 并根据传入的 markValue 值，在历史区间中标记出所在位置
+ */
+func (f *Fund) composeHistoryRow(markValue float64) string {
+	f.queryStreakInfo()
+	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
+
+	ranges := f.getHistoryNetValueRanges()
+	idx, leftOrRight, exceeded := positionInHistory(markValue, ranges)
+
+	for i, history := range ranges {
+		mark := ""
+		if idx == i {
+			if exceeded {
+				if leftOrRight < 0 {
+					mark = "⏮️"
+				} else {
+					mark = "⏭️"
+				}
+			} else {
+				if leftOrRight < 0 {
+					mark = "◀️"
+				} else {
+					mark = "▶️"
+				}
+			}
+		}
+		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min.Value, history.max.Value, mark)
+	}
+	return historyRow
+}
+
+func (f *Fund) getHistoryNetValueRanges() []HistoryNetValueRange {
+	var ranges []HistoryNetValueRange
+	for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
+		min, max := findFundHistoryMinMaxNetValues(f.Code, strings.Split(s, "|")[0])
+		ranges = append(ranges, HistoryNetValueRange{
+			title: strings.Split(s, "|")[1],
+			min:   min,
+			max:   max,
+		})
+	}
+	return ranges
 }
 
 // Estimate 实时估值结构体
@@ -845,4 +942,10 @@ func (s *Stock) prettyPrint() string {
 		row += fmt.Sprintf("%.4f (%.4f ~ %.4f)\n", s.Price, s.Low, s.High)
 	}
 	return row + "\n"
+}
+
+type HistoryNetValueRange struct {
+	title string
+	min   NetValue
+	max   NetValue
 }
