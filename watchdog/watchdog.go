@@ -608,7 +608,7 @@ func positionInHistory(value float64, histories []HistoryNetValueRange) (int, in
 		} else {
 			leftOrRight = 1
 		}
-		for i := idx; i < len(histories); i++ {
+		for i := idx; i < len(histories)-1; i++ {
 			if leftOrRight > 0 {
 				if histories[i].max.Value == histories[i+1].max.Value {
 					idx++
@@ -618,6 +618,7 @@ func positionInHistory(value float64, histories []HistoryNetValueRange) (int, in
 			} else {
 				if histories[i].min.Value == histories[i+1].min.Value {
 					idx++
+				} else {
 					break
 				}
 			}

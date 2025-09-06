@@ -95,6 +95,7 @@ func TestGetAllFundCodes(t *testing.T) {
 	// 初始化随机数种子
 	rand.Seed(time.Now().UnixNano())
 	code := codes[rand.Intn(len(codes))]
+	code = "159793"
 	println("Choose code: " + code)
 	name, netValue := getFundNetValue(code)
 	fund := Fund{
