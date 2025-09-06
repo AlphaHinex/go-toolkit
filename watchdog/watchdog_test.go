@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/go-yaml/yaml"
+	"math/rand"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,4 +92,14 @@ func TestGetAllFundCodes(t *testing.T) {
 	if len(codes) == 0 {
 		t.Error("Expected fund codes to be non-empty")
 	}
+	// 初始化随机数种子
+	rand.Seed(time.Now().UnixNano())
+	code := codes[rand.Intn(len(codes))]
+	name, netValue := getFundNetValue(code)
+	historyRow := "历史净值：\n"
+	for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
+		min, max := findFundHistoryMinMaxNetValues(code, strings.Split(s, "|")[0])
+		historyRow += fmt.Sprintf("%s：[%.4f, %.4f]\n", strings.Split(s, "|")[1], min.Value, max.Value)
+	}
+	fmt.Printf("%s|%s\n最新净值：%.4f\n%s", code, name, netValue.Value, historyRow)
 }
