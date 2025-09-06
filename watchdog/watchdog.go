@@ -213,6 +213,23 @@ func watchFund(fund *Fund) {
 	}
 }
 
+func getAllFundCodes() []string {
+	bodyStr := string(httpGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
+	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
+	matches := re.FindStringSubmatch(bodyStr)
+	if len(matches) < 2 {
+		return nil
+	}
+
+	var jsonObj map[string]interface{}
+	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
+	var codes []string
+	for _, item := range jsonObj["Datas"].([]interface{}) {
+		codes = append(codes, strings.Split(item.(string), "|")[0])
+	}
+	return codes
+}
+
 // 获得基金名称以及净值信息
 func getFundNetValue(fundCode string) (string, *NetValue) {
 	var netValue NetValue
@@ -227,16 +244,7 @@ func getFundNetValue(fundCode string) (string, *NetValue) {
 // 获取基金实时估算净值
 func getFundRealtimeEstimate(fundCode string) *Estimate {
 	reUrl := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
-	client := &http.Client{}
-	req, _ := http.NewRequest("GET", reUrl, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	bodyStr := string(body)
+	bodyStr := string(httpGet(reUrl))
 	re := regexp.MustCompile(`jsonpgz\((.*?)\);`)
 	matches := re.FindStringSubmatch(bodyStr)
 	if len(matches) < 2 {
@@ -244,12 +252,25 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 	}
 
 	var e Estimate
-	_ = json.Unmarshal([]byte(matches[1]), &e)
 	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
 		// 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
 		log.Println(fundCode, "未获取到实时估值数据", bodyStr)
 	}
 	return &e
+}
+
+func httpGet(url string) []byte {
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	return body
 }
 
 func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue, NetValue) {

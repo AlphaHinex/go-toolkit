@@ -84,3 +84,10 @@ func TestUseEmojiNumber(t *testing.T) {
 		t.Error("Expected emoji number is wrong")
 	}
 }
+
+func TestGetAllFundCodes(t *testing.T) {
+	codes := getAllFundCodes()
+	if len(codes) == 0 {
+		t.Error("Expected fund codes to be non-empty")
+	}
+}
