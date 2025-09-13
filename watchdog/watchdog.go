@@ -234,7 +234,15 @@ func getAllFundCodes() []string {
 func buildFund(fundCode string) *Fund {
 	var netValue NetValue
 	res, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
-	res = res["Datas"].(map[string]interface{})
+	if res["Datas"] == nil {
+		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
+		return &Fund{
+			Code: fundCode,
+			Name: "未知基金",
+		}
+	} else {
+		res = res["Datas"].(map[string]interface{})
+	}
 	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
 	netValue.Date = res["FSRQ"].(string)
 	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)

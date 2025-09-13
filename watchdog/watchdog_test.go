@@ -99,7 +99,7 @@ func TestGetAllFundCodes(t *testing.T) {
 	}
 
 	// 打开文件用于写入
-	file, err := os.OpenFile("/Users/alphahinex/Desktop/funds.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile("/Users/alphahinex/Desktop/funds-20250913.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Printf("无法打开文件: %v\n", err)
 		return
@@ -108,21 +108,13 @@ func TestGetAllFundCodes(t *testing.T) {
 
 	for _, code := range codes {
 		println("Choose code: " + code)
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("捕获到异常，跳过当前基金代码 %s: %v\n", code, r)
-				}
-			}()
-
-			// 可能引发异常的代码
-			fund := buildFund(code)
-			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
-			// 写入文件
-			_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
-			if err != nil {
-				fmt.Printf("写入文件失败: %v\n", err)
-			}
-		}()
+		// 可能引发异常的代码
+		fund := buildFund(code)
+		historyRow := fund.composeHistoryRow(fund.NetValue.Value)
+		// 写入文件
+		_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
+		if err != nil {
+			fmt.Printf("写入文件失败: %v\n", err)
+		}
 	}
 }
