@@ -186,9 +186,9 @@ func writeConfigs(configFilePath string, configs *Config) {
 
 func watchFund(fund *Fund) {
 	// 获取基金最新净值
-	name, netValue := getFundNetValue(fund.Code)
-	fund.Name = name
-	fund.NetValue = *netValue
+	retrievedFund := buildFund(fund.Code)
+	fund.Name = retrievedFund.Name
+	fund.NetValue = retrievedFund.NetValue
 	now, _, latestNetValueDate := getDateTimes(*fund)
 
 	if !isSameDay(now, latestNetValueDate) {
@@ -197,7 +197,7 @@ func watchFund(fund *Fund) {
 		fund.NetValue.Updated = true
 	}
 	if fund.Cost > 0 {
-		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
+		fund.Profit.Net = fmt.Sprintf("%.2f", (fund.NetValue.Value-fund.Cost)/fund.Cost*100)
 	}
 
 	if watchNow || isWatchTime(now) {
@@ -231,14 +231,18 @@ func getAllFundCodes() []string {
 }
 
 // 获得基金名称以及净值信息
-func getFundNetValue(fundCode string) (string, *NetValue) {
+func buildFund(fundCode string) *Fund {
 	var netValue NetValue
-	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}})
-	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
-	netValue.Value, _ = strconv.ParseFloat(netValueRes["NAV"].(string), 64)
-	netValue.Date = netValueRes["PDATE"].(string)
-	netValue.Margin, _ = strconv.ParseFloat(netValueRes["NAVCHGRT"].(string), 64)
-	return netValueRes["SHORTNAME"].(string), &netValue
+	res, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
+	res = res["Datas"].(map[string]interface{})
+	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
+	netValue.Date = res["FSRQ"].(string)
+	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)
+	return &Fund{
+		Code:     fundCode,
+		Name:     res["SHORTNAME"].(string),
+		NetValue: netValue,
+	}
 }
 
 // 获取基金实时估算净值

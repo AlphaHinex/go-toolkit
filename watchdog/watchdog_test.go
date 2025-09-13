@@ -10,11 +10,11 @@ import (
 
 func TestGetFundNetValue(t *testing.T) {
 	code := "002401"
-	name, netValue := getFundNetValue(code)
-	if name == "" {
+	fund := buildFund(code)
+	if fund.Name == "" {
 		t.Error("Expected fund name to be non-empty")
 	}
-	if netValue.Date == "" {
+	if fund.NetValue.Date == "" {
 		t.Error("Expected net value date to be non-empty")
 	}
 }
@@ -86,6 +86,11 @@ func TestUseEmojiNumber(t *testing.T) {
 	}
 }
 
+func TestCompose(t *testing.T) {
+	fund := buildFund("008099")
+	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, fund.composeHistoryRow(fund.NetValue.Value))
+}
+
 func TestGetAllFundCodes(t *testing.T) {
 	codes := getAllFundCodes()
 	println(len(codes))
@@ -111,15 +116,10 @@ func TestGetAllFundCodes(t *testing.T) {
 			}()
 
 			// 可能引发异常的代码
-			name, netValue := getFundNetValue(code)
-			fund := Fund{
-				Code:     code,
-				Name:     name,
-				NetValue: *netValue,
-			}
-			historyRow := fund.composeHistoryRow(netValue.Value)
+			fund := buildFund(code)
+			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
 			// 写入文件
-			_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, name, netValue.Value, historyRow)
+			_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
 			if err != nil {
 				fmt.Printf("写入文件失败: %v\n", err)
 			}
