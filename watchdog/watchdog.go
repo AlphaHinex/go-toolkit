@@ -9,6 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -232,7 +233,6 @@ func getAllFundCodes() []string {
 
 // 获得基金名称以及净值信息
 func buildFund(fundCode string) *Fund {
-	var netValue NetValue
 	res, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
 	if res["Datas"] == nil {
 		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
@@ -243,13 +243,39 @@ func buildFund(fundCode string) *Fund {
 	} else {
 		res = res["Datas"].(map[string]interface{})
 	}
+	var netValue NetValue
 	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
 	netValue.Date = res["FSRQ"].(string)
 	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)
+	netValue.Accumulated, _ = strconv.ParseFloat(res["LJJZ"].(string), 64)
+	scale, _ := strconv.ParseFloat(res["ENDNAV"].(string), 64)
+	scale = scale / 100000000 // 转换为亿元
+	scale = math.Round(scale*100) / 100
+
+	establishRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
+	establishRes = establishRes["Datas"].(map[string]interface{})
 	return &Fund{
-		Code:     fundCode,
-		Name:     res["SHORTNAME"].(string),
+		Code:        fundCode,
+		Name:        res["SHORTNAME"].(string),
+		CreatedDate: establishRes["ESTABDATE"].(string),
+		Manager: struct {
+			Id   string `yaml:"-"`
+			Name string `yaml:"-"`
+		}{
+			Id:   res["JJJLID"].(string),
+			Name: res["JJJL"].(string),
+		},
+		Status: struct {
+			Valid bool   `yaml:"-"`
+			Buy   string `yaml:"-"`
+			Sell  string `yaml:"-"`
+		}{
+			Valid: res["BUY"].(bool),
+			Buy:   res["SGZT"].(string),
+			Sell:  res["SHZT"].(string),
+		},
 		NetValue: netValue,
+		Scale:    scale,
 	}
 }
 
@@ -746,9 +772,19 @@ type FinancialProduct interface {
 }
 
 type Fund struct {
-	Code     string   `yaml:"-"`        // 基金代码
-	Name     string   `yaml:"name"`     // 基金名称
-	Cost     float64  `yaml:"cost"`     // 基金成本价
+	Code        string `yaml:"-"`    // 基金代码
+	Name        string `yaml:"name"` // 基金名称
+	CreatedDate string `yaml:"-"`    // 基金成立日期
+	Manager     struct {
+		Id   string `yaml:"-"` // 基金经理 ID
+		Name string `yaml:"-"` // 基金经理名称
+	} `yaml:"-"` // 基金经理信息
+	Cost   float64 `yaml:"cost"` // 基金成本价
+	Status struct {
+		Valid bool   `yaml:"-"` // 是否可买卖
+		Buy   string `yaml:"-"` // 买入状态
+		Sell  string `yaml:"-"` // 卖出状态
+	} `yaml:"-"` // 基金买卖状态
 	NetValue NetValue `yaml:"net"`      // 基金净值
 	Estimate Estimate `yaml:"estimate"` // 实时估算净值
 	Profit   struct {
@@ -760,6 +796,7 @@ type Fund struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
 	} `yaml:"streak"` // 连续上涨或下跌信息
+	Scale float64 `yaml:"-"` // 基金规模（亿元）
 }
 
 func (f *Fund) isTradingDay() bool {
@@ -888,10 +925,11 @@ type Estimate struct {
 }
 
 type NetValue struct {
-	Value   float64 `yaml:"-"`       // 净值
-	Margin  float64 `yaml:"-"`       // 净值涨跌幅百分比
-	Date    string  `yaml:"date"`    // 净值日期
-	Updated bool    `yaml:"updated"` // 是否已更新净值
+	Value       float64 `yaml:"-"`       // 单位净值
+	Margin      float64 `yaml:"-"`       // 单位净值涨跌幅百分比
+	Date        string  `yaml:"date"`    // 单位净值日期
+	Updated     bool    `yaml:"updated"` // 是否已更新单位净值
+	Accumulated float64 `yaml:"-"`       // 累计净值
 }
 
 type Stock struct {

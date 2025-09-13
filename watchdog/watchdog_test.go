@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"os"
@@ -87,8 +88,10 @@ func TestUseEmojiNumber(t *testing.T) {
 }
 
 func TestCompose(t *testing.T) {
-	fund := buildFund("008099")
+	fund := buildFund("011130")
 	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, fund.composeHistoryRow(fund.NetValue.Value))
+	content, _ := json.Marshal(fund)
+	fmt.Println(string(content))
 }
 
 func TestGetAllFundCodes(t *testing.T) {
