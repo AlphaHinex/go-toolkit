@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -109,15 +110,38 @@ func TestGetAllFundCodes(t *testing.T) {
 	}
 	defer file.Close()
 
+	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
+	wg := &sync.WaitGroup{}                      // 创建 WaitGroup
+	concurrencyLimit := 5                        // 设置并发限制数量
+	sem := make(chan struct{}, concurrencyLimit) // 创建带缓冲的通道
+
 	for _, code := range codes {
-		println("Choose code: " + code)
-		// 可能引发异常的代码
-		fund := buildFund(code)
-		historyRow := fund.composeHistoryRow(fund.NetValue.Value)
-		// 写入文件
-		_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
-		if err != nil {
-			fmt.Printf("写入文件失败: %v\n", err)
-		}
+		wg.Add(1) // 增加一个任务
+		go func(code string) {
+			defer wg.Done() // 任务完成时减少计数
+
+			sem <- struct{}{}        // 占用一个并发槽
+			defer func() { <-sem }() // 释放并发槽
+
+			println("Choose code: " + code)
+			fund := buildFund(code)
+
+			if !fund.Status.Valid {
+				println("跳过无法购买的基金: " + code)
+				return
+			}
+			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
+			// 写入文件需要加锁，避免并发写入冲突
+			mu.Lock()
+			// 写入文件
+			_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
+			mu.Unlock()
+
+			if err != nil {
+				fmt.Printf("写入文件失败: %v\n", err)
+			}
+		}(code)
 	}
+
+	wg.Wait() // 等待所有任务完成
 }
