@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -131,14 +133,17 @@ func TestGetAllFundCodes(t *testing.T) {
 				return
 			}
 			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
-			// 写入文件需要加锁，避免并发写入冲突
-			mu.Lock()
-			// 写入文件
-			_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
-			mu.Unlock()
+			matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
+			if !strings.Contains(fund.Name, "债") && strings.Contains(historyRow, "连续") && matched {
+				// 写入文件需要加锁，避免并发写入冲突
+				mu.Lock()
+				// 写入文件
+				_, err = fmt.Fprintf(file, "%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow)
+				mu.Unlock()
 
-			if err != nil {
-				fmt.Printf("写入文件失败: %v\n", err)
+				if err != nil {
+					fmt.Printf("写入文件失败: %v\n", err)
+				}
 			}
 		}(code)
 	}
