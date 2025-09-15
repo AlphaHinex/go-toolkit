@@ -366,7 +366,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	// 1. 创建自定义Transport（支持HTTPS）
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false, // 生产环境应设为false并配置CA证书
+			InsecureSkipVerify: true, // 生产环境应设为false并配置CA证书
 		},
 	}
 
