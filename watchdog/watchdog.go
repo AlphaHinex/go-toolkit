@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -71,6 +72,13 @@ func main() {
 				Value:    false,
 				Required: false,
 			},
+			&cli.BoolFlag{
+				Name:     "sift",
+				Aliases:  []string{"s"},
+				Usage:    "Sift through all funds and notify result.",
+				Value:    false,
+				Required: false,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			needTemplate := cCtx.Bool("template")
@@ -94,6 +102,12 @@ func main() {
 			verbose = cCtx.Bool("verbose")
 			watchNow = cCtx.Bool("watch-now")
 			configs := readConfigs(configFilePath)
+
+			needToSift := cCtx.Bool("sift")
+			if needToSift {
+				notify(configs, sift())
+				return nil
+			}
 
 			fundsMap := configs.Funds
 			var funds []*Fund
@@ -140,15 +154,7 @@ func main() {
 
 			if len(strings.TrimSpace(message.String())) > 0 {
 				msg := strings.TrimSpace(addIndexRow() + message.String())
-				if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
-					log.Println(msg)
-				}
-				if configs.Token.Lark != "" {
-					sendToLark(configs.Token.Lark, msg)
-				}
-				if configs.Token.DingTalk != "" {
-					sendToDingTalk(configs.Token.DingTalk, msg)
-				}
+				notify(configs, msg)
 			}
 
 			writeConfigs(configFilePath, configs)
@@ -158,6 +164,18 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func notify(configs *Config, msg string) {
+	if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
+		log.Println(msg)
+	}
+	if configs.Token.Lark != "" {
+		sendToLark(configs.Token.Lark, msg)
+	}
+	if configs.Token.DingTalk != "" {
+		sendToDingTalk(configs.Token.DingTalk, msg)
 	}
 }
 
@@ -1001,4 +1019,43 @@ type HistoryNetValueRange struct {
 	title string
 	min   NetValue
 	max   NetValue
+}
+
+func sift() string {
+	codes := getAllFundCodes()
+
+	var resultBuilder strings.Builder            // String builder to accumulate results
+	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
+	wg := &sync.WaitGroup{}                      // 创建 WaitGroup
+	concurrencyLimit := 8                        // 设置并发限制数量
+	sem := make(chan struct{}, concurrencyLimit) // 创建带缓冲的通道
+
+	for _, code := range codes {
+		wg.Add(1) // 增加一个任务
+		go func(code string) {
+			defer wg.Done() // 任务完成时减少计数
+
+			sem <- struct{}{}        // 占用一个并发槽
+			defer func() { <-sem }() // 释放并发槽
+
+			fund := buildFund(code)
+
+			if !fund.Status.Valid && verbose {
+				log.Printf("跳过无法购买的基金: %s\n", code)
+				return
+			}
+			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
+			matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
+			if !strings.Contains(fund.Name, "债") && strings.Contains(historyRow, "连续") && matched {
+				// Write to the string builder with mutex protection
+				mu.Lock()
+				// 写入文件
+				resultBuilder.WriteString(fmt.Sprintf("%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow))
+				mu.Unlock()
+			}
+		}(code)
+	}
+
+	wg.Wait() // 等待所有任务完成
+	return resultBuilder.String()
 }
