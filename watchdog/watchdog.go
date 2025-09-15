@@ -333,6 +333,10 @@ func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue
 	var min, max NetValue
 	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {fundCode}, "RANGE": {rangeCode}})
+	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
+		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
+		return min, max
+	}
 	for _, data := range res["data"].([]interface{}) {
 		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
 		if min.Value == 0 || value < min.Value {
