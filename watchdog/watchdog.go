@@ -836,8 +836,14 @@ func (f *Fund) queryStreakInfo() {
 	if f.Streak.Info != "" && isSameDay(f.Streak.UpdateDate, now) {
 		return // 已经查询过了
 	}
+
 	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {f.Code}, "RANGE": {"y"}})
+	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
+		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", f.Code)
+		return
+	}
+
 	riseStreak, fallStreak := 0, 0
 	netValueFrom, netValueTo, netValueMargin := 0.0, 0.0, 0.0
 	for i := len(res["data"].([]interface{})) - 1; i >= 0; i-- {
