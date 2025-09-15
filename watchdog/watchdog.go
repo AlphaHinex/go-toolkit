@@ -9,6 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,7 +44,7 @@ func main() {
 	app := &cli.App{
 		Name:    "watchdog",
 		Usage:   "Watchdog of fund",
-		Version: "v2.6.1",
+		Version: "v2.6.2",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "config-file",
@@ -186,9 +187,9 @@ func writeConfigs(configFilePath string, configs *Config) {
 
 func watchFund(fund *Fund) {
 	// 获取基金最新净值
-	name, netValue := getFundNetValue(fund.Code)
-	fund.Name = name
-	fund.NetValue = *netValue
+	retrievedFund := buildFund(fund.Code)
+	fund.Name = retrievedFund.Name
+	fund.NetValue = retrievedFund.NetValue
 	now, _, latestNetValueDate := getDateTimes(*fund)
 
 	if !isSameDay(now, latestNetValueDate) {
@@ -197,7 +198,7 @@ func watchFund(fund *Fund) {
 		fund.NetValue.Updated = true
 	}
 	if fund.Cost > 0 {
-		fund.Profit.Net = fmt.Sprintf("%.2f", (netValue.Value-fund.Cost)/fund.Cost*100)
+		fund.Profit.Net = fmt.Sprintf("%.2f", (fund.NetValue.Value-fund.Cost)/fund.Cost*100)
 	}
 
 	if watchNow || isWatchTime(now) {
@@ -213,30 +214,75 @@ func watchFund(fund *Fund) {
 	}
 }
 
+func getAllFundCodes() []string {
+	bodyStr := string(httpGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
+	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
+	matches := re.FindStringSubmatch(bodyStr)
+	if len(matches) < 2 {
+		return nil
+	}
+
+	var jsonObj map[string]interface{}
+	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
+	var codes []string
+	for _, item := range jsonObj["Datas"].([]interface{}) {
+		codes = append(codes, strings.Split(item.(string), "|")[0])
+	}
+	return codes
+}
+
 // 获得基金名称以及净值信息
-func getFundNetValue(fundCode string) (string, *NetValue) {
+func buildFund(fundCode string) *Fund {
+	res, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
+	if res["Datas"] == nil {
+		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
+		return &Fund{
+			Code: fundCode,
+			Name: "未知基金",
+		}
+	} else {
+		res = res["Datas"].(map[string]interface{})
+	}
 	var netValue NetValue
-	netValueRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo", url.Values{"Fcodes": {fundCode}})
-	netValueRes = netValueRes["Datas"].([]interface{})[0].(map[string]interface{})
-	netValue.Value, _ = strconv.ParseFloat(netValueRes["NAV"].(string), 64)
-	netValue.Date = netValueRes["PDATE"].(string)
-	netValue.Margin, _ = strconv.ParseFloat(netValueRes["NAVCHGRT"].(string), 64)
-	return netValueRes["SHORTNAME"].(string), &netValue
+	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
+	netValue.Date = res["FSRQ"].(string)
+	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)
+	netValue.Accumulated, _ = strconv.ParseFloat(res["LJJZ"].(string), 64)
+	scale, _ := strconv.ParseFloat(res["ENDNAV"].(string), 64)
+	scale = scale / 100000000 // 转换为亿元
+	scale = math.Round(scale*100) / 100
+
+	establishRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
+	establishRes = establishRes["Datas"].(map[string]interface{})
+	return &Fund{
+		Code:        fundCode,
+		Name:        res["SHORTNAME"].(string),
+		CreatedDate: establishRes["ESTABDATE"].(string),
+		Manager: struct {
+			Id   string `yaml:"-"`
+			Name string `yaml:"-"`
+		}{
+			Id:   res["JJJLID"].(string),
+			Name: res["JJJL"].(string),
+		},
+		Status: struct {
+			Valid bool   `yaml:"-"`
+			Buy   string `yaml:"-"`
+			Sell  string `yaml:"-"`
+		}{
+			Valid: res["BUY"].(bool),
+			Buy:   res["SGZT"].(string),
+			Sell:  res["SHZT"].(string),
+		},
+		NetValue: netValue,
+		Scale:    scale,
+	}
 }
 
 // 获取基金实时估算净值
 func getFundRealtimeEstimate(fundCode string) *Estimate {
 	reUrl := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
-	client := &http.Client{}
-	req, _ := http.NewRequest("GET", reUrl, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	bodyStr := string(body)
+	bodyStr := string(httpGet(reUrl))
 	re := regexp.MustCompile(`jsonpgz\((.*?)\);`)
 	matches := re.FindStringSubmatch(bodyStr)
 	if len(matches) < 2 {
@@ -244,12 +290,25 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 	}
 
 	var e Estimate
-	_ = json.Unmarshal([]byte(matches[1]), &e)
 	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
 		// 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
 		log.Println(fundCode, "未获取到实时估值数据", bodyStr)
 	}
 	return &e
+}
+
+func httpGet(url string) []byte {
+	client := getHttpsClient()
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	return body
 }
 
 func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue, NetValue) {
@@ -282,6 +341,17 @@ func upOrDown(value string) string {
 	return fmt.Sprintf("▼ %.2f%%", v)
 }
 
+func getHttpsClient() *http.Client {
+	// 1. 创建自定义Transport（支持HTTPS）
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // 生产环境应设为false并配置CA证书
+		},
+	}
+	// 2. 创建HTTP客户端
+	return &http.Client{Transport: tr}
+}
+
 func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
 	var (
 		DeviceID = "874C427C-7C24-4980-A835-66FD40B67605"
@@ -304,27 +374,18 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 
 	fullURL := getUrl + "?" + commonParams.Encode() + "&" + params.Encode()
 
-	// 1. 创建自定义Transport（支持HTTPS）
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false, // 生产环境应设为false并配置CA证书
-		},
-	}
-
-	// 2. 创建HTTP客户端
-	client := &http.Client{Transport: tr}
-
-	// 3. 创建请求对象
+	// 创建请求对象
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	// 4. 设置请求头
+	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1 Edg/94.0.4606.71")
 
-	// 5. 发送请求
+	// 发送请求
+	client := getHttpsClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
@@ -457,12 +518,12 @@ func inOpeningBreakTime() bool {
 // 美化输出，示例如下：
 // 008099|广发价值领先混合A
 // 成本：1.5258
-// 净值：1.4969 🔺0.05% -1.89% 2025-08-08
+// 净值：1.4969 🔺0.05% -1.89% 前日
 // 估值：1.4914 ▼ -0.32% -2.25% 15:00
-// 连续 3 天 🔺2.05% 1.4818 → 1.5752
+// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
 // 历史净值：
-// 月度：1.4818 → 1.5752
-// 季度：1.4325 → 1.5752
+// 月度：[1.4818, 1.5752]
+// 季度：[1.4325, 1.5752]
 // 半年：...
 // 一年：...
 // 三年：...
@@ -474,11 +535,17 @@ func inOpeningBreakTime() bool {
 func prettyPrint(fund Fund) string {
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
 	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
+	now, loc := getNow()
+	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
+	netValueDateStr := "前日"
+	if isSameDay(now, netValueDate) {
+		netValueDateStr = "今日"
+	}
 	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
 		fund.NetValue.Value,
 		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
 		fund.Profit.Net,
-		fund.NetValue.Date)
+		netValueDateStr)
 	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
 		fund.Estimate.Value,
 		upOrDown(fund.Estimate.Margin),
@@ -491,12 +558,8 @@ func prettyPrint(fund Fund) string {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
 	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
-		fund.queryStreakInfo()
-		historyRow := fmt.Sprintf("%s\n历史净值：\n", fund.Streak.Info)
-		for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
-			min, max := findFundHistoryMinMaxNetValues(fund.Code, strings.Split(s, "|")[0])
-			historyRow += fmt.Sprintf("%s：%.4f → %.4f\n", strings.Split(s, "|")[1], min.Value, max.Value)
-		}
+		estimateValue, _ := strconv.ParseFloat(fund.Estimate.Value, 64)
+		historyRow := fund.composeHistoryRow(estimateValue)
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
@@ -566,6 +629,75 @@ func addIndexRow() string {
 	return indexRow + "\n"
 }
 
+/**
+ * 查找某值在给定净值历史区间中所处的位置。
+ * 返回值：历史区间数组位置索引，在所属区间偏左还是偏右（小于 0 偏左，大于 0 偏右），是否超过边界值
+ */
+func positionInHistory(value float64, histories []HistoryNetValueRange) (int, int, bool) {
+	idx, leftOrRight, exceeded := -1, 0, false
+	for i, h := range histories {
+		if value >= h.min.Value && value <= h.max.Value {
+			idx = i
+			break
+		}
+	}
+	// 位于某区间内时，判断偏左还是偏右，并对对应侧的边界值进行向下穿透（下个历史数据区间对应侧边界值与当前区间一致时，idx 向下移动）
+	if idx > -1 {
+		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+			leftOrRight = -1
+		} else {
+			leftOrRight = 1
+		}
+		for i := idx; i < len(histories)-1; i++ {
+			if leftOrRight > 0 {
+				if histories[i].max.Value == histories[i+1].max.Value {
+					idx++
+				} else {
+					break
+				}
+			} else {
+				if histories[i].min.Value == histories[i+1].min.Value {
+					idx++
+				} else {
+					break
+				}
+			}
+		}
+		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+			leftOrRight = -1
+		} else {
+			leftOrRight = 1
+		}
+	}
+	// 超过所有历史之区间
+	if idx == -1 {
+		idx = len(histories) - 1
+		exceeded = true
+		if value < histories[idx].min.Value {
+			leftOrRight = -1
+		}
+		if value > histories[idx].max.Value {
+			leftOrRight = 1
+		}
+	}
+	return idx, leftOrRight, exceeded
+}
+
+func useEmojiNumber(num int) string {
+	str := strconv.Itoa(num)
+	str = strings.ReplaceAll(str, "0", "0️⃣")
+	str = strings.ReplaceAll(str, "1", "1️⃣")
+	str = strings.ReplaceAll(str, "2", "2️⃣")
+	str = strings.ReplaceAll(str, "3", "3️⃣")
+	str = strings.ReplaceAll(str, "4", "4️⃣")
+	str = strings.ReplaceAll(str, "5", "5️⃣")
+	str = strings.ReplaceAll(str, "6", "6️⃣")
+	str = strings.ReplaceAll(str, "7", "7️⃣")
+	str = strings.ReplaceAll(str, "8", "8️⃣")
+	str = strings.ReplaceAll(str, "9", "9️⃣")
+	return str
+}
+
 // 发送消息到飞书
 func sendToLark(larkWebhookToken, msg string) {
 	log.Println("准备发送消息到飞书: ", msg)
@@ -582,7 +714,7 @@ func sendToLark(larkWebhookToken, msg string) {
 	req, _ := http.NewRequest("POST", larkWebhook, bytes.NewBuffer(jsonPayload))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := getHttpsClient()
 	resp, _ := client.Do(req)
 	log.Println("飞书返回状态: ", resp.Status)
 	if resp.StatusCode != 200 {
@@ -603,7 +735,7 @@ func sendToDingTalk(dingTalkToken, msg string) {
 		fmt.Println("Failed to marshal payload:", err)
 		return
 	}
-	client := &http.Client{}
+	client := getHttpsClient()
 	req, err := http.NewRequest("POST",
 		"https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, bytes.NewBuffer(jsonPayload))
 
@@ -642,9 +774,19 @@ type FinancialProduct interface {
 }
 
 type Fund struct {
-	Code     string   `yaml:"-"`        // 基金代码
-	Name     string   `yaml:"name"`     // 基金名称
-	Cost     float64  `yaml:"cost"`     // 基金成本价
+	Code        string `yaml:"-"`    // 基金代码
+	Name        string `yaml:"name"` // 基金名称
+	CreatedDate string `yaml:"-"`    // 基金成立日期
+	Manager     struct {
+		Id   string `yaml:"-"` // 基金经理 ID
+		Name string `yaml:"-"` // 基金经理名称
+	} `yaml:"-"` // 基金经理信息
+	Cost   float64 `yaml:"cost"` // 基金成本价
+	Status struct {
+		Valid bool   `yaml:"-"` // 是否可买卖
+		Buy   string `yaml:"-"` // 买入状态
+		Sell  string `yaml:"-"` // 卖出状态
+	} `yaml:"-"` // 基金买卖状态
 	NetValue NetValue `yaml:"net"`      // 基金净值
 	Estimate Estimate `yaml:"estimate"` // 实时估算净值
 	Profit   struct {
@@ -656,6 +798,7 @@ type Fund struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
 	} `yaml:"streak"` // 连续上涨或下跌信息
+	Scale float64 `yaml:"-"` // 基金规模（亿元）
 }
 
 func (f *Fund) isTradingDay() bool {
@@ -668,8 +811,8 @@ func (f *Fund) isTradable() bool {
 }
 
 // 查询最近一个月的连续上涨或下跌信息
-// 连续 3 天 🔺2.05% 1.4818 → 1.5752
-// 连续 2 天 ▼ 2.05% 1.5752 → 1.4818
+// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
+// 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
 func (f *Fund) queryStreakInfo() {
 	now, _ := getNow()
 	if f.Streak.Info != "" && isSameDay(f.Streak.UpdateDate, now) {
@@ -720,11 +863,59 @@ func (f *Fund) queryStreakInfo() {
 		}
 	}
 	if riseStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %d 天 🔺%.2f%% %.4f → %.4f", riseStreak, netValueMargin, netValueFrom, netValueTo)
+		f.Streak.Info = fmt.Sprintf("连续 %s 天 🔺%.2f%% %.4f ↗️ %.4f", useEmojiNumber(riseStreak), netValueMargin, netValueFrom, netValueTo)
 	} else if fallStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %d 天 ▼ %.2f%% %.4f → %.4f", fallStreak, netValueMargin, netValueFrom, netValueTo)
+		f.Streak.Info = fmt.Sprintf("连续 %s 天 ▼ %.2f%% %.4f ↘️ %.4f", useEmojiNumber(fallStreak), netValueMargin, netValueFrom, netValueTo)
 	}
 	f.Streak.UpdateDate = now
+}
+
+/**
+ * 生成历史净值区间行
+ * 包括历史净值连续涨跌信息
+ * 以及不同阶段的历史净值区间
+ * 并根据传入的 markValue 值，在历史区间中标记出所在位置
+ */
+func (f *Fund) composeHistoryRow(markValue float64) string {
+	f.queryStreakInfo()
+	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
+
+	ranges := f.getHistoryNetValueRanges()
+	idx, leftOrRight, exceeded := positionInHistory(markValue, ranges)
+
+	for i, history := range ranges {
+		mark := ""
+		if idx == i {
+			if exceeded {
+				if leftOrRight < 0 {
+					mark = "⏮️"
+				} else {
+					mark = "⏭️"
+				}
+			} else {
+				if leftOrRight < 0 {
+					mark = "◀️"
+				} else {
+					mark = "▶️"
+				}
+			}
+		}
+		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min.Value, history.max.Value, mark)
+	}
+	return historyRow
+}
+
+func (f *Fund) getHistoryNetValueRanges() []HistoryNetValueRange {
+	var ranges []HistoryNetValueRange
+	for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
+		min, max := findFundHistoryMinMaxNetValues(f.Code, strings.Split(s, "|")[0])
+		ranges = append(ranges, HistoryNetValueRange{
+			title: strings.Split(s, "|")[1],
+			min:   min,
+			max:   max,
+		})
+	}
+	return ranges
 }
 
 // Estimate 实时估值结构体
@@ -736,10 +927,11 @@ type Estimate struct {
 }
 
 type NetValue struct {
-	Value   float64 `yaml:"-"`       // 净值
-	Margin  float64 `yaml:"-"`       // 净值涨跌幅百分比
-	Date    string  `yaml:"date"`    // 净值日期
-	Updated bool    `yaml:"updated"` // 是否已更新净值
+	Value       float64 `yaml:"-"`       // 单位净值
+	Margin      float64 `yaml:"-"`       // 单位净值涨跌幅百分比
+	Date        string  `yaml:"date"`    // 单位净值日期
+	Updated     bool    `yaml:"updated"` // 是否已更新单位净值
+	Accumulated float64 `yaml:"-"`       // 累计净值
 }
 
 type Stock struct {
@@ -757,7 +949,7 @@ func (s *Stock) retrieveLatestPrice() {
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		s.Market, s.Code)
-	client := &http.Client{}
+	client := getHttpsClient()
 	req, _ := http.NewRequest("GET", reqUrl, nil)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -803,4 +995,10 @@ func (s *Stock) prettyPrint() string {
 		row += fmt.Sprintf("%.4f (%.4f ~ %.4f)\n", s.Price, s.Low, s.High)
 	}
 	return row + "\n"
+}
+
+type HistoryNetValueRange struct {
+	title string
+	min   NetValue
+	max   NetValue
 }
