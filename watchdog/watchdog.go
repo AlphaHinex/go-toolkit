@@ -298,7 +298,7 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 }
 
 func httpGet(url string) []byte {
-	client := &http.Client{}
+	client := getHttpsClient()
 	req, _ := http.NewRequest("GET", url, nil)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -341,6 +341,17 @@ func upOrDown(value string) string {
 	return fmt.Sprintf("▼ %.2f%%", v)
 }
 
+func getHttpsClient() *http.Client {
+	// 1. 创建自定义Transport（支持HTTPS）
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // 生产环境应设为false并配置CA证书
+		},
+	}
+	// 2. 创建HTTP客户端
+	return &http.Client{Transport: tr}
+}
+
 func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
 	var (
 		DeviceID = "874C427C-7C24-4980-A835-66FD40B67605"
@@ -363,27 +374,18 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 
 	fullURL := getUrl + "?" + commonParams.Encode() + "&" + params.Encode()
 
-	// 1. 创建自定义Transport（支持HTTPS）
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // 生产环境应设为false并配置CA证书
-		},
-	}
-
-	// 2. 创建HTTP客户端
-	client := &http.Client{Transport: tr}
-
-	// 3. 创建请求对象
+	// 创建请求对象
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	// 4. 设置请求头
+	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1 Edg/94.0.4606.71")
 
-	// 5. 发送请求
+	// 发送请求
+	client := getHttpsClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
@@ -712,7 +714,7 @@ func sendToLark(larkWebhookToken, msg string) {
 	req, _ := http.NewRequest("POST", larkWebhook, bytes.NewBuffer(jsonPayload))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := getHttpsClient()
 	resp, _ := client.Do(req)
 	log.Println("飞书返回状态: ", resp.Status)
 	if resp.StatusCode != 200 {
@@ -733,7 +735,7 @@ func sendToDingTalk(dingTalkToken, msg string) {
 		fmt.Println("Failed to marshal payload:", err)
 		return
 	}
-	client := &http.Client{}
+	client := getHttpsClient()
 	req, err := http.NewRequest("POST",
 		"https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, bytes.NewBuffer(jsonPayload))
 
@@ -947,7 +949,7 @@ func (s *Stock) retrieveLatestPrice() {
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		s.Market, s.Code)
-	client := &http.Client{}
+	client := getHttpsClient()
 	req, _ := http.NewRequest("GET", reqUrl, nil)
 	resp, err := client.Do(req)
 	if err != nil {
