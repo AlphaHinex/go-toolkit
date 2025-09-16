@@ -270,12 +270,16 @@ func buildFund(fundCode string) *Fund {
 	scale = scale / 100000000 // 转换为亿元
 	scale = math.Round(scale*100) / 100
 
+	createdDate := "未知成立日期"
 	establishRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
-	establishRes = establishRes["Datas"].(map[string]interface{})
+	if establishRes["Datas"] != nil {
+		establishRes = establishRes["Datas"].(map[string]interface{})
+		createdDate = establishRes["ESTABDATE"].(string)
+	}
 	return &Fund{
 		Code:        fundCode,
 		Name:        res["SHORTNAME"].(string),
-		CreatedDate: establishRes["ESTABDATE"].(string),
+		CreatedDate: createdDate,
 		Manager: struct {
 			Id   string `yaml:"-"`
 			Name string `yaml:"-"`
@@ -316,9 +320,8 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 }
 
 func httpGet(url string) []byte {
-	client := getHttpsClient()
 	req, _ := http.NewRequest("GET", url, nil)
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 		return nil
@@ -363,7 +366,12 @@ func upOrDown(value string) string {
 	return fmt.Sprintf("▼ %.2f%%", v)
 }
 
-func getHttpsClient() *http.Client {
+// doRequestWithRetry 执行 HTTP 请求并支持重试机制
+func doRequestWithRetry(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	var maxRetries, retryDelay = 3, 2 * time.Second
+
 	// 1. 创建自定义Transport（支持HTTPS）
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -371,7 +379,26 @@ func getHttpsClient() *http.Client {
 		},
 	}
 	// 2. 创建HTTP客户端
-	return &http.Client{Transport: tr}
+	client := &http.Client{Transport: tr}
+
+	for i := 0; i <= maxRetries; i++ {
+		resp, err = client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			if i > 0 {
+				log.Printf("%s 请求第 %d 次成功.\n", req.URL, i+1)
+			}
+			return resp, nil
+		}
+
+		// 如果不是最后一次重试，等待一段时间后重试
+		if i < maxRetries {
+			log.Printf("%s 请求失败，稍后第 %d 次重试...\n错误信息：\n%v\n", req.URL, i+1, err)
+			time.Sleep(time.Duration(i) * retryDelay)
+		}
+	}
+
+	// 返回最后一次的响应或错误
+	return resp, err
 }
 
 func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
@@ -407,8 +434,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1 Edg/94.0.4606.71")
 
 	// 发送请求
-	client := getHttpsClient()
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 		return nil, ""
@@ -736,8 +762,7 @@ func sendToLark(larkWebhookToken, msg string) {
 	req, _ := http.NewRequest("POST", larkWebhook, bytes.NewBuffer(jsonPayload))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := getHttpsClient()
-	resp, _ := client.Do(req)
+	resp, _ := doRequestWithRetry(req)
 	log.Println("飞书返回状态: ", resp.Status)
 	if resp.StatusCode != 200 {
 		log.Println(resp.Body)
@@ -757,7 +782,6 @@ func sendToDingTalk(dingTalkToken, msg string) {
 		fmt.Println("Failed to marshal payload:", err)
 		return
 	}
-	client := getHttpsClient()
 	req, err := http.NewRequest("POST",
 		"https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, bytes.NewBuffer(jsonPayload))
 
@@ -767,7 +791,7 @@ func sendToDingTalk(dingTalkToken, msg string) {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
-	res, err := client.Do(req)
+	res, err := doRequestWithRetry(req)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -977,9 +1001,8 @@ func (s *Stock) retrieveLatestPrice() {
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		s.Market, s.Code)
-	client := getHttpsClient()
 	req, _ := http.NewRequest("GET", reqUrl, nil)
-	resp, err := client.Do(req)
+	resp, err := doRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 	}
@@ -1048,6 +1071,9 @@ func sift() string {
 			sem <- struct{}{}        // 占用一个并发槽
 			defer func() { <-sem }() // 释放并发槽
 
+			if verbose {
+				log.Printf("Processing fund code: %s\n", code)
+			}
 			fund := buildFund(code)
 
 			if !fund.Status.Valid && verbose {
@@ -1057,11 +1083,17 @@ func sift() string {
 			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
 			matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
 			if !strings.Contains(fund.Name, "债") && strings.Contains(historyRow, "连续") && matched {
+				if verbose {
+					log.Printf("Matched fund: %s\n%s\n", fund.Name, historyRow)
+				}
 				// Write to the string builder with mutex protection
 				mu.Lock()
 				// 写入文件
 				resultBuilder.WriteString(fmt.Sprintf("%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow))
 				mu.Unlock()
+			}
+			if verbose {
+				log.Printf("Finished processing fund code: %s\n", code)
 			}
 		}(code)
 	}
