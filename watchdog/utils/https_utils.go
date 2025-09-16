@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"crypto/tls"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
+func GetFundHttpsResponse(getUrl string, params url.Values) (map[string]interface{}, string) {
 	var (
 		DeviceID = "874C427C-7C24-4980-A835-66FD40B67605"
 		Version  = "6.5.5"
@@ -43,7 +43,7 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1 Edg/94.0.4606.71")
 
 	// 发送请求
-	resp, err := doRequestWithRetry(req)
+	resp, err := DoRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 		return nil, ""
@@ -58,9 +58,9 @@ func getFundHttpsResponse(getUrl string, params url.Values) (map[string]interfac
 	return result, ""
 }
 
-func httpsGet(url string) []byte {
+func HttpsGet(url string) []byte {
 	req, _ := http.NewRequest("GET", url, nil)
-	resp, err := doRequestWithRetry(req)
+	resp, err := DoRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 		return nil
@@ -71,8 +71,8 @@ func httpsGet(url string) []byte {
 	return body
 }
 
-// doRequestWithRetry 执行 HTTP 请求并支持重试机制
-func doRequestWithRetry(req *http.Request) (*http.Response, error) {
+// DoRequestWithRetry 执行 HTTP 请求并支持重试机制
+func DoRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 	var maxRetries, retryDelay = 3, 2 * time.Second

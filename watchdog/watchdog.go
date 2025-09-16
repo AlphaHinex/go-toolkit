@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
+	"go-toolkit/watchdog/utils"
 	"io"
 	"log"
 	"math"
@@ -232,7 +233,7 @@ func watchFund(fund *Fund) {
 }
 
 func getAllFundCodes() []string {
-	bodyStr := string(httpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
+	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
 	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
 	matches := re.FindStringSubmatch(bodyStr)
 	if len(matches) < 2 {
@@ -250,7 +251,7 @@ func getAllFundCodes() []string {
 
 // 获得基金名称以及净值信息
 func buildFund(fundCode string) *Fund {
-	res, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
+	res, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
 	if res["Datas"] == nil {
 		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
 		return &Fund{
@@ -270,7 +271,7 @@ func buildFund(fundCode string) *Fund {
 	scale = math.Round(scale*100) / 100
 
 	createdDate := "未知成立日期"
-	establishRes, _ := getFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
+	establishRes, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
 	if establishRes["Datas"] != nil {
 		establishRes = establishRes["Datas"].(map[string]interface{})
 		createdDate = establishRes["ESTABDATE"].(string)
@@ -303,7 +304,7 @@ func buildFund(fundCode string) *Fund {
 // 获取基金实时估算净值
 func getFundRealtimeEstimate(fundCode string) *Estimate {
 	reUrl := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
-	bodyStr := string(httpsGet(reUrl))
+	bodyStr := string(utils.HttpsGet(reUrl))
 	re := regexp.MustCompile(`jsonpgz\((.*?)\);`)
 	matches := re.FindStringSubmatch(bodyStr)
 	if len(matches) < 2 {
@@ -320,7 +321,7 @@ func getFundRealtimeEstimate(fundCode string) *Estimate {
 
 func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue, NetValue) {
 	var min, max NetValue
-	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {fundCode}, "RANGE": {rangeCode}})
 	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
 		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
@@ -573,7 +574,7 @@ func sortFunds(funds []*Fund) {
 
 func addIndexRow() string {
 	indexUrl := "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f14&secids=1.000001,1.000300,0.399001,0.399006&_=1754373624121"
-	indexRes, _ := getFundHttpsResponse(indexUrl, nil)
+	indexRes, _ := utils.GetFundHttpsResponse(indexUrl, nil)
 	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
 	now, _ := getNow()
 	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04:05"))
@@ -669,7 +670,7 @@ func sendToLark(larkWebhookToken, msg string) {
 	req, _ := http.NewRequest("POST", larkWebhook, bytes.NewBuffer(jsonPayload))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, _ := doRequestWithRetry(req)
+	resp, _ := utils.DoRequestWithRetry(req)
 	log.Println("飞书返回状态: ", resp.Status)
 	if resp.StatusCode != 200 {
 		log.Println(resp.Body)
@@ -698,7 +699,7 @@ func sendToDingTalk(dingTalkToken, msg string) {
 	}
 	req.Header.Add("Content-Type", "application/json")
 
-	res, err := doRequestWithRetry(req)
+	res, err := utils.DoRequestWithRetry(req)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -772,7 +773,7 @@ func (f *Fund) queryStreakInfo() {
 		return // 已经查询过了
 	}
 
-	res, _ := getFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {f.Code}, "RANGE": {"y"}})
 	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
 		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", f.Code)
@@ -909,7 +910,7 @@ func (s *Stock) retrieveLatestPrice() {
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		s.Market, s.Code)
 	req, _ := http.NewRequest("GET", reqUrl, nil)
-	resp, err := doRequestWithRetry(req)
+	resp, err := utils.DoRequestWithRetry(req)
 	if err != nil {
 		log.Println("Error making GET request:", err)
 	}
