@@ -341,7 +341,11 @@ func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue
 		return min, max
 	}
 	for _, data := range res["data"].([]interface{}) {
-		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
+		value, err := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
+		if err != nil {
+			log.Printf("解析基金 %s 历史净值数据失败: %v\n%v", fundCode, err, res)
+			continue
+		}
 		if min.Value == 0 || value < min.Value {
 			min.Value = value
 			min.Date = data.(map[string]interface{})["FSRQ"].(string)
