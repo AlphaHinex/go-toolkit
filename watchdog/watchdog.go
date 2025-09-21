@@ -23,6 +23,7 @@ import (
 
 var verbose bool
 var watchNow bool
+var showAll bool
 
 var configTemplate = fmt.Sprintf(`
 funds:
@@ -56,6 +57,12 @@ func main() {
 			&cli.BoolFlag{
 				Name:     "watch-now",
 				Usage:    "Watch funds now, bypassing the predefined watch time points.",
+				Value:    false,
+				Required: false,
+			},
+			&cli.BoolFlag{
+				Name:     "show-all",
+				Usage:    "Show all funds regardless of conditions.",
 				Value:    false,
 				Required: false,
 			},
@@ -101,6 +108,7 @@ func main() {
 
 			verbose = cCtx.Bool("verbose")
 			watchNow = cCtx.Bool("watch-now")
+			showAll = cCtx.Bool("show-all")
 			configs := readConfigs(configFilePath)
 
 			needToSift := cCtx.Bool("sift")
@@ -227,7 +235,9 @@ func watchFund(fund *Fund) {
 			fund.Estimate = *estimate
 			fund.Estimate.Changed = changed
 			estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
-			fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+			if fund.Cost > 0 {
+				fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
+			}
 		}
 	}
 }
@@ -397,6 +407,9 @@ func conditionChain(fund *Fund) bool {
 // 1. 如果是交易日的开盘时间，且当前分钟为 48 分钟
 // 2. 交易日收盘后的 21:48
 func shouldShowAll(product FinancialProduct) bool {
+	if showAll {
+		return true
+	}
 	now, _ := getNow()
 	hour := now.Hour()
 	minute := now.Minute()
@@ -431,7 +444,7 @@ func getDateTimes(fund Fund) (time.Time, time.Time, time.Time) {
 
 func needToShowNetValue(fund Fund) bool {
 	now, _, netValueDate := getDateTimes(fund)
-	if fund.isTradingDay() && inOpeningBreakTime() && fund.Estimate.Changed {
+	if fund.isTradingDay() && inBreakingTime() && fund.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", fund.Name)
 		return true
 	} else if fund.isTradingDay() && !fund.isTradable() && fund.Estimate.Changed {
@@ -469,7 +482,7 @@ func inOpeningHours() bool {
 	return false
 }
 
-func inOpeningBreakTime() bool {
+func inBreakingTime() bool {
 	now, _ := getNow()
 	hour := now.Hour()
 	minute := now.Minute()
@@ -495,32 +508,51 @@ func inOpeningBreakTime() bool {
 // 交易日收盘后，待所有基金净值更新后，显示估值及净值
 func prettyPrint(fund Fund) string {
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
-	costRow := fmt.Sprintf("成本：%.4f\n", fund.Cost)
+	costRow := ""
+	if fund.Cost > 0 {
+		costRow = fmt.Sprintf("成本：%.4f\n", fund.Cost)
+	}
 	now, loc := getNow()
 	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
 	netValueDateStr := "前日"
 	if isSameDay(now, netValueDate) {
 		netValueDateStr = "今日"
 	}
-	netRow := fmt.Sprintf("净值：%.4f %s %s%% %s\n",
-		fund.NetValue.Value,
-		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
-		fund.Profit.Net,
-		netValueDateStr)
-	estimateRow := fmt.Sprintf("估值：%s %s %s%% %s\n",
-		fund.Estimate.Value,
-		upOrDown(fund.Estimate.Margin),
-		fund.Profit.Estimate,
-		strings.Split(fund.Estimate.Datetime, " ")[1])
+	netRow := ""
+	if fund.Cost > 0 {
+		netRow = fmt.Sprintf("净值：%.4f %s %s 总 %s%%\n",
+			fund.NetValue.Value,
+			netValueDateStr,
+			upOrDown(fmt.Sprint(fund.NetValue.Margin)),
+			fund.Profit.Net)
+	} else {
+		netRow = fmt.Sprintf("净值：%.4f %s %s\n",
+			fund.NetValue.Value,
+			netValueDateStr,
+			upOrDown(fmt.Sprint(fund.NetValue.Margin)))
+	}
 
+	estimateRow := ""
+	if len(fund.Estimate.Value) > 0 {
+		estimateRow = fmt.Sprintf("估值：%s %s %s%% %s\n",
+			fund.Estimate.Value,
+			upOrDown(fund.Estimate.Margin),
+			fund.Profit.Estimate,
+			strings.Split(fund.Estimate.Datetime, " ")[1])
+	}
 	result := title + costRow
 
-	if inOpeningBreakTime() {
+	if fund.isTradingDay() && inBreakingTime() {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
-	} else if !fund.NetValue.Updated && needToShowHistory(fund) {
+	} else if showAll || (!fund.NetValue.Updated && needToShowHistory(fund)) {
 		estimateValue, _ := strconv.ParseFloat(fund.Estimate.Value, 64)
-		historyRow := fund.composeHistoryRow(estimateValue)
+		historyRow := ""
+		if estimateValue > 0 {
+			historyRow = fund.composeHistoryRow(estimateValue)
+		} else {
+			historyRow = fund.composeHistoryRow(fund.NetValue.Value)
+		}
 		// 交易日当日净值未更新且需要显示历史净值时，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow + historyRow
 	} else {
@@ -542,7 +574,7 @@ func prettyPrint(fund Fund) string {
 }
 
 func needToShowHistory(fund Fund) bool {
-	if fund.isTradingDay() && (inOpeningHours() || inOpeningBreakTime()) {
+	if fund.isTradingDay() && (inOpeningHours() || inBreakingTime()) {
 		estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 		estimateProfit, _ := strconv.ParseFloat(fund.Profit.Estimate, 64)
 		if estimateMargin > 0 && estimateProfit > 0 && fund.NetValue.Margin+estimateMargin > 0 {
@@ -995,7 +1027,11 @@ func sift() string {
 			}
 			historyRow := fund.composeHistoryRow(fund.NetValue.Value)
 			matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
-			if !strings.Contains(fund.Name, "债") && strings.Contains(historyRow, "连续") && matched {
+			// 筛选要显示的基金
+			if !strings.Contains(fund.Name, "债") &&
+				strings.Contains(historyRow, "连续") &&
+				fund.Scale > 10 &&
+				matched {
 				if verbose {
 					log.Printf("Matched fund: %s\n%s\n", fund.Name, historyRow)
 				}
