@@ -507,11 +507,16 @@ func inBreakingTime() bool {
 // 交易日中午休盘时间，同时显示估值和净值
 // 交易日收盘后，待所有基金净值更新后，显示估值及净值
 func prettyPrint(fund Fund) string {
+	// 标题行
 	title := fmt.Sprintf("%s|%s\n", fund.Code, fund.Name)
+
+	// 成本行
 	costRow := ""
 	if fund.Cost > 0 {
 		costRow = fmt.Sprintf("成本：%.4f\n", fund.Cost)
 	}
+
+	// 净值行
 	now, loc := getNow()
 	netValueDate, _ := time.ParseInLocation("2006-01-02", fund.NetValue.Date, loc)
 	netValueDateStr := "前日"
@@ -519,29 +524,38 @@ func prettyPrint(fund Fund) string {
 		netValueDateStr = "今日"
 	}
 	netRow := ""
+	netProfit := ""
 	if fund.Cost > 0 {
-		netRow = fmt.Sprintf("净值：%.4f %s %s 总 %s%%\n",
-			fund.NetValue.Value,
-			netValueDateStr,
-			upOrDown(fmt.Sprint(fund.NetValue.Margin)),
-			fund.Profit.Net)
-	} else {
-		netRow = fmt.Sprintf("净值：%.4f %s %s\n",
-			fund.NetValue.Value,
-			netValueDateStr,
-			upOrDown(fmt.Sprint(fund.NetValue.Margin)))
+		netProfit = fmt.Sprintf("%s%% ", fund.Profit.Net)
 	}
+	// 净值 净值涨跌幅 累计收益 净值日期/时间
+	netRow = fmt.Sprintf("净值：%.4f %s %s%s\n",
+		fund.NetValue.Value,
+		upOrDown(fmt.Sprint(fund.NetValue.Margin)),
+		netProfit,
+		netValueDateStr)
 
+	// 估值行
 	estimateRow := ""
 	if len(fund.Estimate.Value) > 0 {
-		estimateRow = fmt.Sprintf("估值：%s %s %s%% %s\n",
+		estimateProfit := ""
+		if fund.Cost > 0 {
+			mark := ""
+			if !strings.HasPrefix(fund.Profit.Estimate, "-") {
+				mark = "💹"
+			}
+			// 估值收益为正标记 估值%
+			estimateProfit = fmt.Sprintf("%s%s%% ", mark, fund.Profit.Estimate)
+		}
+		// 估值 估值涨跌幅 估值收益率 估值时间
+		estimateRow = fmt.Sprintf("估值：%s %s %s%s\n",
 			fund.Estimate.Value,
 			upOrDown(fund.Estimate.Margin),
-			fund.Profit.Estimate,
+			estimateProfit,
 			strings.Split(fund.Estimate.Datetime, " ")[1])
 	}
-	result := title + costRow
 
+	result := title + costRow
 	if fund.isTradingDay() && inBreakingTime() {
 		// 如果是交易日的午休时间，先显示上一日估值，再显示当日净值
 		result += netRow + estimateRow
