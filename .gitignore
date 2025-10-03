@@ -6,3 +6,4 @@
 *.json
 *.cookie
 build/
+test/
