@@ -1,16 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/go-yaml/yaml"
 	"github.com/urfave/cli/v2"
 	"go-toolkit/watchdog/product"
+	"go-toolkit/watchdog/service"
 	"go-toolkit/watchdog/utils"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"regexp"
 	"runtime"
@@ -107,11 +104,11 @@ func main() {
 			verbose = cCtx.Bool("verbose")
 			watchNow = cCtx.Bool("watch-now")
 			showAll = cCtx.Bool("show-all")
-			configs := readConfigs(configFilePath)
+			configs := service.ReadConfigs(configFilePath)
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
-				notify(configs, product.Sift(verbose))
+				service.Notify(configs, product.Sift(verbose))
 				return nil
 			}
 
@@ -160,52 +157,16 @@ func main() {
 
 			if len(strings.TrimSpace(message.String())) > 0 {
 				msg := strings.TrimSpace(addIndexRow() + message.String())
-				notify(configs, msg)
+				service.Notify(configs, msg)
 			}
 
-			writeConfigs(configFilePath, configs)
+			service.WriteConfigs(configFilePath, configs)
 			return nil
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func notify(configs *Config, msg string) {
-	if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
-		log.Println(msg)
-	}
-	if configs.Token.Lark != "" {
-		sendToLark(configs.Token.Lark, msg)
-	}
-	if configs.Token.DingTalk != "" {
-		sendToDingTalk(configs.Token.DingTalk, msg)
-	}
-}
-
-func readConfigs(configsFilePath string) *Config {
-	content, err := os.ReadFile(configsFilePath)
-	if err != nil {
-		log.Panicf("读取配置 %s 失败: %v", configsFilePath, err)
-	}
-	var config Config
-	err = yaml.Unmarshal(content, &config)
-	if err != nil {
-		log.Panicf("解析配置失败: %v", err)
-	}
-	return &config
-}
-
-func writeConfigs(configFilePath string, configs *Config) {
-	// 将 Configs 内容序列化至文件
-	content, err := yaml.Marshal(configs)
-	if err != nil {
-		log.Panicf("序列化配置失败: %v", err)
-	}
-	if err := os.WriteFile(configFilePath, content, 0644); err != nil {
-		log.Panicf("写入配置文件 %s 失败: %v", configFilePath, err)
 	}
 }
 
@@ -322,72 +283,4 @@ func addIndexRow() string {
 		indexRow += fmt.Sprintf("%s：%.2f %.2f %s\n", entry["f14"], entry["f2"], entry["f4"], utils.UpOrDown(fmt.Sprint(entry["f3"])))
 	}
 	return indexRow + "\n"
-}
-
-// 发送消息到飞书
-func sendToLark(larkWebhookToken, msg string) {
-	log.Println("准备发送消息到飞书: ", msg)
-	larkWebhook := "https://open.feishu.cn/open-apis/bot/v2/hook/" + larkWebhookToken
-
-	payload := map[string]interface{}{
-		"msg_type": "text",
-		"content": map[string]string{
-			"text": msg,
-		},
-	}
-
-	jsonPayload, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("POST", larkWebhook, bytes.NewBuffer(jsonPayload))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, _ := utils.DoRequestWithRetry(req)
-	log.Println("飞书返回状态: ", resp.Status)
-	if resp.StatusCode != 200 {
-		log.Println(resp.Body)
-	}
-	defer resp.Body.Close()
-}
-
-func sendToDingTalk(dingTalkToken, msg string) {
-	payload := map[string]interface{}{
-		"msgtype": "text",
-		"text": map[string]string{
-			"content": msg,
-		},
-	}
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Println("Failed to marshal payload:", err)
-		return
-	}
-	req, err := http.NewRequest("POST",
-		"https://oapi.dingtalk.com/robot/send?access_token="+dingTalkToken, bytes.NewBuffer(jsonPayload))
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	req.Header.Add("Content-Type", "application/json")
-
-	res, err := utils.DoRequestWithRetry(req)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer res.Body.Close()
-
-	_, err = io.ReadAll(res.Body)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-}
-
-type Config struct {
-	Funds  map[string]*product.Fund  `yaml:"funds"`
-	Stocks map[string]*product.Stock `yaml:"stocks"`
-	Token  struct {
-		Lark     string `yaml:"lark"`
-		DingTalk string `yaml:"dingtalk"`
-	} `yaml:"token"`
 }
