@@ -64,3 +64,13 @@ token:
 
 - https://github.com/kouchao/TiantianFundApi
 - https://github.com/x2rr/funds/
+- https://fundf10.eastmoney.com/jjfl_008099.html
+- https://blog.csdn.net/Eumenides_max/article/details/144694349
+- https://api.mairui.club/hslt/list/b997d4403688d5e66a
+
+测试
+----
+
+```bash
+go test -v ./...
+```

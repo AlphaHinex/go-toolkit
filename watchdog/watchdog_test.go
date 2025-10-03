@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"go-toolkit/watchdog/product"
+	"go-toolkit/watchdog/service"
 	"go-toolkit/watchdog/utils"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ funds:
       datetime: 2025-08-14 15:00
       changed: false
     ended: true`
-	var config Config
+	var config service.Config
 	_ = yaml.Unmarshal([]byte(yamlText), &config)
 	latestNetValueDate, _ := config.Funds["501203"].GetNetValueDate()
 	_, loc := utils.GetNow()
@@ -48,13 +49,6 @@ func TestAddIndexRow(t *testing.T) {
 	if len(index) == 0 {
 		t.Error("Expected index to be non-nil")
 	}
-}
-
-func TestSendToDingTalk(t *testing.T) {
-	token := "xxx"
-	message := `hinex
-2025-08-22 15:03`
-	sendToDingTalk(token, message)
 }
 
 func TestQueryStreakInfo(t *testing.T) {
