@@ -74,6 +74,26 @@ func (f *Fund) IsTradable() bool {
 	return f.IsTradingDay() && utils.InOpeningHours()
 }
 
+// FundCodeProvider implements CodeProvider for funds.
+type FundCodeProvider struct{}
+
+func (f FundCodeProvider) GetAllCodes() []string {
+	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
+	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
+	matches := re.FindStringSubmatch(bodyStr)
+	if len(matches) < 2 {
+		return nil
+	}
+
+	var jsonObj map[string]interface{}
+	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
+	var codes []string
+	for _, item := range jsonObj["Datas"].([]interface{}) {
+		codes = append(codes, strings.Split(item.(string), "|")[0])
+	}
+	return codes
+}
+
 // QueryStreakInfo
 // 查询最近一个月的连续上涨或下跌信息
 // 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
@@ -191,7 +211,7 @@ func (f *Fund) getHistoryNetValueRanges() []HistoryNetValueRange {
 }
 
 func Sift(verbose bool) string {
-	codes := getAllFundCodes()
+	codes := FundCodeProvider{}.GetAllCodes() // 获取所有基金代码
 
 	var resultBuilder strings.Builder            // String builder to accumulate results
 	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
@@ -340,23 +360,6 @@ func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue
 		}
 	}
 	return min, max
-}
-
-func getAllFundCodes() []string {
-	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
-	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
-	matches := re.FindStringSubmatch(bodyStr)
-	if len(matches) < 2 {
-		return nil
-	}
-
-	var jsonObj map[string]interface{}
-	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
-	var codes []string
-	for _, item := range jsonObj["Datas"].([]interface{}) {
-		codes = append(codes, strings.Split(item.(string), "|")[0])
-	}
-	return codes
 }
 
 // BuildFund 获得基金名称以及净值信息

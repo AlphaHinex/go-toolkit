@@ -19,3 +19,8 @@ func ShouldShowAll(product FinancialProduct) bool {
 	return product.IsTradingDay() &&
 		((product.IsTradable() && minute == 48) || (hour == 21 && minute == 48))
 }
+
+// CodeProvider defines an interface for fetching financial products' code.
+type CodeProvider interface {
+	GetAllCodes() []string
+}

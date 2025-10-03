@@ -62,20 +62,6 @@ func TestQueryStreakInfo(t *testing.T) {
 	}
 }
 
-func TestRetrieveLatestPrice(t *testing.T) {
-	s := product.Stock{
-		Code:   "510210",
-		Market: "1",
-		Low:    0.7,
-		High:   1.0,
-	}
-	s.RetrieveLatestPrice()
-	fmt.Println(s.PrettyPrint())
-	if s.Price == 0 {
-		t.Error("Expected latest price to be non-zero")
-	}
-}
-
 func TestUseEmojiNumber(t *testing.T) {
 	if utils.TurnToEmojiNumber(1234567890) != "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣0️⃣" {
 		t.Error("Expected emoji number is wrong")

@@ -22,6 +22,30 @@ type Stock struct {
 	Price    float64   `yaml:"price"`    // 股票最新价格
 }
 
+func (s *Stock) IsTradingDay() bool {
+	now, _ := utils.GetNow()
+	return utils.IsSameDay(s.Datetime, now)
+}
+
+func (s *Stock) IsTradable() bool {
+	return s.IsTradingDay() && utils.InOpeningHours()
+}
+
+// StockCodeProvider implements CodeProvider for stocks.
+type StockCodeProvider struct{}
+
+func (s StockCodeProvider) GetAllCodes() []string {
+	// Example implementation for stock codes.
+	bodyStr := string(utils.HttpsGet("https://api.mairui.club/hslt/list/b997d4403688d5e66a"))
+	var jsonArray []map[string]string
+	_ = json.Unmarshal([]byte(bodyStr), &jsonArray)
+	var codes []string
+	for _, item := range jsonArray {
+		codes = append(codes, item["dm"])
+	}
+	return codes
+}
+
 func (s *Stock) RetrieveLatestPrice() {
 	// 获取股票最新价格
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
@@ -46,15 +70,6 @@ func (s *Stock) RetrieveLatestPrice() {
 	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
 	_, loc := utils.GetNow()
 	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], loc)
-}
-
-func (s *Stock) IsTradingDay() bool {
-	now, _ := utils.GetNow()
-	return utils.IsSameDay(s.Datetime, now)
-}
-
-func (s *Stock) IsTradable() bool {
-	return s.IsTradingDay() && utils.InOpeningHours()
 }
 
 // PrettyPrint
