@@ -2,6 +2,12 @@ package product
 
 import "go-toolkit/watchdog/utils"
 
+// Factory defines an interface for retrieving and building financial products.
+type Factory interface {
+	GetAllCodes() []string              // fetching financial products' code.
+	Build(code string) FinancialProduct // build a financial product by code.
+}
+
 type FinancialProduct interface {
 	IsTradingDay() bool // 当天是否是交易日
 	IsTradable() bool   // 当前是否可交易
@@ -18,9 +24,4 @@ func ShouldShowAll(product FinancialProduct) bool {
 	minute := now.Minute()
 	return product.IsTradingDay() &&
 		((product.IsTradable() && minute == 48) || (hour == 21 && minute == 48))
-}
-
-// CodeProvider defines an interface for fetching financial products' code.
-type CodeProvider interface {
-	GetAllCodes() []string
 }

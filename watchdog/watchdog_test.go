@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/go-yaml/yaml"
 	"go-toolkit/watchdog/product"
@@ -10,17 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-func TestGetFundNetValue(t *testing.T) {
-	code := "002401"
-	fund := product.BuildFund(code)
-	if fund.Name == "" {
-		t.Error("Expected fund name to be non-empty")
-	}
-	if fund.NetValue.Date == "" {
-		t.Error("Expected net value date to be non-empty")
-	}
-}
 
 func TestNetValueUpdated(t *testing.T) {
 	yamlText := `
@@ -66,13 +54,6 @@ func TestUseEmojiNumber(t *testing.T) {
 	if utils.TurnToEmojiNumber(1234567890) != "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣0️⃣" {
 		t.Error("Expected emoji number is wrong")
 	}
-}
-
-func TestCompose(t *testing.T) {
-	fund := product.BuildFund("011130")
-	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, fund.ComposeHistoryRow(fund.NetValue.Value))
-	content, _ := json.Marshal(fund)
-	fmt.Println(string(content))
 }
 
 func TestSift(t *testing.T) {

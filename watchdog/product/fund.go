@@ -74,10 +74,10 @@ func (f *Fund) IsTradable() bool {
 	return f.IsTradingDay() && utils.InOpeningHours()
 }
 
-// FundCodeProvider implements CodeProvider for funds.
-type FundCodeProvider struct{}
+// FundFactory implements Factory for funds.
+type FundFactory struct{}
 
-func (f FundCodeProvider) GetAllCodes() []string {
+func (f FundFactory) GetAllCodes() []string {
 	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
 	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
 	matches := re.FindStringSubmatch(bodyStr)
@@ -92,6 +92,58 @@ func (f FundCodeProvider) GetAllCodes() []string {
 		codes = append(codes, strings.Split(item.(string), "|")[0])
 	}
 	return codes
+}
+
+// Build 获得基金名称以及净值信息
+func (f FundFactory) Build(fundCode string) *Fund {
+	res, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
+	if res["Datas"] == nil {
+		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
+		return &Fund{
+			Code: fundCode,
+			Name: "未知基金",
+		}
+	} else {
+		res = res["Datas"].(map[string]interface{})
+	}
+	var netValue NetValue
+	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
+	netValue.Date = res["FSRQ"].(string)
+	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)
+	netValue.Accumulated, _ = strconv.ParseFloat(res["LJJZ"].(string), 64)
+	scale, _ := strconv.ParseFloat(res["ENDNAV"].(string), 64)
+	scale = scale / 100000000 // 转换为亿元
+	scale = math.Round(scale*100) / 100
+
+	createdDate := "未知成立日期"
+	establishRes, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
+	if establishRes["Datas"] != nil {
+		establishRes = establishRes["Datas"].(map[string]interface{})
+		createdDate = establishRes["ESTABDATE"].(string)
+	}
+	return &Fund{
+		Code:        fundCode,
+		Name:        res["SHORTNAME"].(string),
+		CreatedDate: createdDate,
+		Manager: struct {
+			Id   string `yaml:"-"`
+			Name string `yaml:"-"`
+		}{
+			Id:   res["JJJLID"].(string),
+			Name: res["JJJL"].(string),
+		},
+		Status: struct {
+			Valid bool   `yaml:"-"`
+			Buy   string `yaml:"-"`
+			Sell  string `yaml:"-"`
+		}{
+			Valid: res["BUY"].(bool),
+			Buy:   res["SGZT"].(string),
+			Sell:  res["SHZT"].(string),
+		},
+		NetValue: netValue,
+		Scale:    scale,
+	}
 }
 
 // QueryStreakInfo
@@ -211,7 +263,7 @@ func (f *Fund) getHistoryNetValueRanges() []HistoryNetValueRange {
 }
 
 func Sift(verbose bool) string {
-	codes := FundCodeProvider{}.GetAllCodes() // 获取所有基金代码
+	codes := FundFactory{}.GetAllCodes() // 获取所有基金代码
 
 	var resultBuilder strings.Builder            // String builder to accumulate results
 	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
@@ -230,7 +282,7 @@ func Sift(verbose bool) string {
 			if verbose {
 				log.Printf("Processing fund code: %s\n", code)
 			}
-			fund := BuildFund(code)
+			fund := FundFactory{}.Build(code)
 
 			if !fund.Status.Valid && verbose {
 				log.Printf("跳过无法购买的基金: %s\n", code)
@@ -360,58 +412,6 @@ func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue
 		}
 	}
 	return min, max
-}
-
-// BuildFund 获得基金名称以及净值信息
-func BuildFund(fundCode string) *Fund {
-	res, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
-	if res["Datas"] == nil {
-		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
-		return &Fund{
-			Code: fundCode,
-			Name: "未知基金",
-		}
-	} else {
-		res = res["Datas"].(map[string]interface{})
-	}
-	var netValue NetValue
-	netValue.Value, _ = strconv.ParseFloat(res["DWJZ"].(string), 64)
-	netValue.Date = res["FSRQ"].(string)
-	netValue.Margin, _ = strconv.ParseFloat(res["RZDF"].(string), 64)
-	netValue.Accumulated, _ = strconv.ParseFloat(res["LJJZ"].(string), 64)
-	scale, _ := strconv.ParseFloat(res["ENDNAV"].(string), 64)
-	scale = scale / 100000000 // 转换为亿元
-	scale = math.Round(scale*100) / 100
-
-	createdDate := "未知成立日期"
-	establishRes, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
-	if establishRes["Datas"] != nil {
-		establishRes = establishRes["Datas"].(map[string]interface{})
-		createdDate = establishRes["ESTABDATE"].(string)
-	}
-	return &Fund{
-		Code:        fundCode,
-		Name:        res["SHORTNAME"].(string),
-		CreatedDate: createdDate,
-		Manager: struct {
-			Id   string `yaml:"-"`
-			Name string `yaml:"-"`
-		}{
-			Id:   res["JJJLID"].(string),
-			Name: res["JJJL"].(string),
-		},
-		Status: struct {
-			Valid bool   `yaml:"-"`
-			Buy   string `yaml:"-"`
-			Sell  string `yaml:"-"`
-		}{
-			Valid: res["BUY"].(bool),
-			Buy:   res["SGZT"].(string),
-			Sell:  res["SHZT"].(string),
-		},
-		NetValue: netValue,
-		Scale:    scale,
-	}
 }
 
 // PrettyPrint

@@ -19,8 +19,8 @@ func TestRetrieveLatestPrice(t *testing.T) {
 	}
 }
 
-func TestGetAllCodes(t *testing.T) {
-	codes := StockCodeProvider{}.GetAllCodes()
+func TestStockFactory_GetAllCodes(t *testing.T) {
+	codes := StockFactory{}.GetAllCodes()
 	println("total stocks: %d", len(codes))
 	for _, c := range codes {
 		if strings.HasSuffix(c, ".SZ") || strings.HasSuffix(c, ".SH") {
@@ -28,5 +28,12 @@ func TestGetAllCodes(t *testing.T) {
 		} else {
 			t.Errorf("invalid stock code: %s", c)
 		}
+	}
+}
+
+func TestStockFactory_Build(t *testing.T) {
+	s := StockFactory{}.Build("688256.SH")
+	if s.Code != "688256" || s.Market != "1" {
+		t.Errorf("unexpected stock: %+v", s)
 	}
 }

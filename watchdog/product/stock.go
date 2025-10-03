@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+var marketMap = map[string]string{
+	"SZ":  "0",   // 深证及其他
+	"SH":  "1",   // 上证
+	"UNK": "2",   // 未知
+	"HK":  "116", // 港股
+	"US":  "105", // 美股
+	"UK":  "155", // 英股
+}
+
 type Stock struct {
 	Code     string    `yaml:"-"`        // 股票代码
 	Market   string    `yaml:"market"`   // 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
@@ -31,10 +40,10 @@ func (s *Stock) IsTradable() bool {
 	return s.IsTradingDay() && utils.InOpeningHours()
 }
 
-// StockCodeProvider implements CodeProvider for stocks.
-type StockCodeProvider struct{}
+// StockFactory implements Factory for stocks.
+type StockFactory struct{}
 
-func (s StockCodeProvider) GetAllCodes() []string {
+func (s StockFactory) GetAllCodes() []string {
 	// Example implementation for stock codes.
 	bodyStr := string(utils.HttpsGet("https://api.mairui.club/hslt/list/b997d4403688d5e66a"))
 	var jsonArray []map[string]string
@@ -44,6 +53,27 @@ func (s StockCodeProvider) GetAllCodes() []string {
 		codes = append(codes, item["dm"])
 	}
 	return codes
+}
+
+// Build constructs a Stock instance based on the provided stock code.
+// The stock code format should be like "000001.SZ" or "600000.SH".
+func (s StockFactory) Build(stockCode string) *Stock {
+	parts := strings.Split(stockCode, ".")
+	if len(parts) != 2 {
+		log.Fatalf("Invalid stock code format: %s", stockCode)
+		return &Stock{}
+	}
+	code := parts[0]
+	marketAbbr := strings.ToUpper(parts[1])
+	market, exists := marketMap[marketAbbr]
+	if !exists {
+		log.Fatalf("Unknown market abbreviation: %s", marketAbbr)
+		return &Stock{}
+	}
+	return &Stock{
+		Code:   code,
+		Market: market,
+	}
 }
 
 func (s *Stock) RetrieveLatestPrice() {
