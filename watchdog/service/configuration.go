@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"github.com/go-yaml/yaml"
 	"go-toolkit/watchdog/product"
 	"log"
@@ -15,6 +16,23 @@ type Config struct {
 		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
 }
+
+var ConfigTemplate = fmt.Sprintf(`
+funds:
+  008099: # 基金代码
+    cost: 1.6078 # 基金成本价
+  000083: 
+    cost: 5.1727
+
+stocks:
+  510210: # 股票代码
+    market: 1 # 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
+    low: 0.7 # 监控阈值低点 
+    high: 1.0 # 监控阈值高点
+
+token:
+  lark: xxxxxx # 飞书机器人 Webhook token，可选
+  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选`)
 
 func ReadConfigs(configsFilePath string) *Config {
 	content, err := os.ReadFile(configsFilePath)
