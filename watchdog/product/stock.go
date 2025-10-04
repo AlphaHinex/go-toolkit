@@ -40,6 +40,62 @@ func (s *Stock) IsTradable() bool {
 	return s.IsTradingDay() && utils.InOpeningHours()
 }
 
+func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
+	rangeMapping := map[string]string{
+		"m":   "101|30",   // 日k|30天
+		"3m":  "101|90",   // 日k|90天
+		"6m":  "101|180",  // 日k|180天
+		"y":   "101|365",  // 日k|365天
+		"3y":  "103|36",   // 月k|36个月
+		"5y":  "103|60",   // 月k|60个月
+		"all": "103|1200", // 月k|1200个月
+	}
+
+	params, exists := rangeMapping[rangeStr]
+	if !exists {
+		log.Fatalf("Invalid range string: %s", rangeStr)
+		return 0, 0
+	}
+	ktlAndLmt := strings.Split(params, "|")
+	now, _ := utils.GetNow()
+	todayStr := now.Format("20060102")
+
+	// 获取股票k线数据
+	reqUrl := fmt.Sprintf("https://push2his.eastmoney.com/api/qt/stock/kline/get?"+
+		"fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57&iscca=1&fqt=1&"+
+		"secid=%s.%s&klt=%s&end=%s&lmt=%s",
+		s.Market, s.Code, ktlAndLmt[0], todayStr, ktlAndLmt[1])
+	req, _ := http.NewRequest("GET", reqUrl, nil)
+	resp, err := utils.DoRequestWithRetry(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err = json.Unmarshal(body, &result); err != nil {
+		log.Println("Error unmarshalling JSON response:", err)
+	}
+	data := result["data"].(map[string]interface{})
+	klines := data["klines"].([]interface{})
+	var min, max float64
+	for _, kline := range klines {
+		// 时间,开盘,收盘,最高,最低,成交量,成交额
+		// "2025-09-30,10.85,11.22,11.87,9.93,10560100,11561278330.00"
+		parts := strings.Split(kline.(string), ",")
+		high, _ := strconv.ParseFloat(parts[3], 64)
+		low, _ := strconv.ParseFloat(parts[4], 64)
+		if min == 0 || low < min {
+			min = low
+		}
+		if max == 0 || high > max {
+			max = high
+		}
+	}
+	return min, max
+}
+
 // StockFactory implements Factory for stocks.
 type StockFactory struct{}
 

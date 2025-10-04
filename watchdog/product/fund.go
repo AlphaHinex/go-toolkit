@@ -21,24 +21,24 @@ type Fund struct {
 	Manager     struct {
 		Id   string `yaml:"-"` // 基金经理 ID
 		Name string `yaml:"-"` // 基金经理名称
-	} `yaml:"-"` // 基金经理信息
+	} `yaml:"-"`                 // 基金经理信息
 	Cost   float64 `yaml:"cost"` // 基金成本价
 	Status struct {
 		Valid bool   `yaml:"-"` // 是否可买卖
 		Buy   string `yaml:"-"` // 买入状态
 		Sell  string `yaml:"-"` // 卖出状态
-	} `yaml:"-"` // 基金买卖状态
+	} `yaml:"-"`                        // 基金买卖状态
 	NetValue NetValue `yaml:"net"`      // 基金净值
 	Estimate Estimate `yaml:"estimate"` // 实时估算净值
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
-	} `yaml:"-"` // 基金净值收益率
+	} `yaml:"-"`               // 基金净值收益率
 	Ended  bool `yaml:"ended"` // 当日监测是否已结束
 	Streak struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
-	} `yaml:"streak"` // 连续上涨或下跌信息
+	} `yaml:"streak"`        // 连续上涨或下跌信息
 	Scale float64 `yaml:"-"` // 基金规模（亿元）
 }
 
@@ -58,12 +58,6 @@ type NetValue struct {
 	Accumulated float64 `yaml:"-"`       // 累计净值
 }
 
-type HistoryNetValueRange struct {
-	title string
-	min   NetValue
-	max   NetValue
-}
-
 func (f *Fund) IsTradingDay() bool {
 	now, _ := utils.GetNow()
 	estimateTime, _ := f.getEstimateTime()
@@ -72,6 +66,48 @@ func (f *Fund) IsTradingDay() bool {
 
 func (f *Fund) IsTradable() bool {
 	return f.IsTradingDay() && utils.InOpeningHours()
+}
+
+func (f *Fund) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
+	rangeMapping := map[string]string{
+		"m":   "y",
+		"3m":  "3y",
+		"6m":  "6y",
+		"y":   "n",
+		"3y":  "3n",
+		"5y":  "5n",
+		"all": "ln",
+	}
+
+	var min, max NetValue
+	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
+		url.Values{"FCODE": {f.Code}, "RANGE": {rangeMapping[rangeStr]}})
+	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
+		log.Printf("未获取到基金 %s（%s:%s） 的历史净值数据，可能是基金代码错误或该基金已被清盘",
+			f.Code, rangeStr, rangeMapping[rangeStr])
+		return 0, 0
+	}
+	for _, data := range res["data"].([]interface{}) {
+		d := data.(map[string]interface{})
+		if d["DWJZ"] == nil {
+			log.Printf("基金 %s 历史净值数据缺失 DWJZ 字段，数据内容: %v", f.Code, d)
+			continue
+		}
+		value, err := strconv.ParseFloat(d["DWJZ"].(string), 64)
+		if err != nil {
+			log.Printf("解析基金 %s 历史净值数据失败: %v", f.Code, err)
+			continue
+		}
+		if min.Value == 0 || value < min.Value {
+			min.Value = value
+			min.Date = d["FSRQ"].(string)
+		}
+		if max.Value == 0 || value > max.Value {
+			max.Value = value
+			max.Date = d["FSRQ"].(string)
+		}
+	}
+	return min.Value, max.Value
 }
 
 // FundFactory implements Factory for funds.
@@ -224,7 +260,7 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 	f.QueryStreakInfo()
 	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
 
-	ranges := f.getHistoryNetValueRanges()
+	ranges := GetHistoryValueRanges(f)
 	idx, leftOrRight, exceeded := positionInHistory(markValue, ranges)
 
 	for i, history := range ranges {
@@ -244,22 +280,9 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 				}
 			}
 		}
-		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min.Value, history.max.Value, mark)
+		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min, history.max, mark)
 	}
 	return historyRow
-}
-
-func (f *Fund) getHistoryNetValueRanges() []HistoryNetValueRange {
-	var ranges []HistoryNetValueRange
-	for _, s := range []string{"y|月度", "3y|季度", "6y|半年", "n|一年", "3n|三年", "5n|五年", "ln|成立"} {
-		min, max := findFundHistoryMinMaxNetValues(f.Code, strings.Split(s, "|")[0])
-		ranges = append(ranges, HistoryNetValueRange{
-			title: strings.Split(s, "|")[1],
-			min:   min,
-			max:   max,
-		})
-	}
-	return ranges
 }
 
 func Sift(verbose bool) string {
@@ -318,37 +341,37 @@ func Sift(verbose bool) string {
  * 查找某值在给定净值历史区间中所处的位置。
  * 返回值：历史区间数组位置索引，在所属区间偏左还是偏右（小于 0 偏左，大于 0 偏右），是否超过边界值
  */
-func positionInHistory(value float64, histories []HistoryNetValueRange) (int, int, bool) {
+func positionInHistory(value float64, histories []HistoryValueRange) (int, int, bool) {
 	idx, leftOrRight, exceeded := -1, 0, false
 	for i, h := range histories {
-		if value >= h.min.Value && value <= h.max.Value {
+		if value >= h.min && value <= h.max {
 			idx = i
 			break
 		}
 	}
 	// 位于某区间内时，判断偏左还是偏右，并对对应侧的边界值进行向下穿透（下个历史数据区间对应侧边界值与当前区间一致时，idx 向下移动）
 	if idx > -1 {
-		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+		if value < (histories[idx].min+histories[idx].max)/2 {
 			leftOrRight = -1
 		} else {
 			leftOrRight = 1
 		}
 		for i := idx; i < len(histories)-1; i++ {
 			if leftOrRight > 0 {
-				if histories[i].max.Value == histories[i+1].max.Value {
+				if histories[i].max == histories[i+1].max {
 					idx++
 				} else {
 					break
 				}
 			} else {
-				if histories[i].min.Value == histories[i+1].min.Value {
+				if histories[i].min == histories[i+1].min {
 					idx++
 				} else {
 					break
 				}
 			}
 		}
-		if value < (histories[idx].min.Value+histories[idx].max.Value)/2 {
+		if value < (histories[idx].min+histories[idx].max)/2 {
 			leftOrRight = -1
 		} else {
 			leftOrRight = 1
@@ -358,10 +381,10 @@ func positionInHistory(value float64, histories []HistoryNetValueRange) (int, in
 	if idx == -1 {
 		idx = len(histories) - 1
 		exceeded = true
-		if value < histories[idx].min.Value {
+		if value < histories[idx].min {
 			leftOrRight = -1
 		}
-		if value > histories[idx].max.Value {
+		if value > histories[idx].max {
 			leftOrRight = 1
 		}
 	}
@@ -381,37 +404,6 @@ func (f *Fund) getEstimateTime() (time.Time, error) {
 	// 获取估值时间
 	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", f.Estimate.Datetime, loc)
 	return estimateTime, err
-}
-
-func findFundHistoryMinMaxNetValues(fundCode string, rangeCode string) (NetValue, NetValue) {
-	var min, max NetValue
-	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
-		url.Values{"FCODE": {fundCode}, "RANGE": {rangeCode}})
-	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
-		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
-		return min, max
-	}
-	for _, data := range res["data"].([]interface{}) {
-		d := data.(map[string]interface{})
-		if d["DWJZ"] == nil {
-			log.Printf("基金 %s 历史净值数据缺失 DWJZ 字段，数据内容: %v", fundCode, d)
-			continue
-		}
-		value, err := strconv.ParseFloat(d["DWJZ"].(string), 64)
-		if err != nil {
-			log.Printf("解析基金 %s 历史净值数据失败: %v", fundCode, err)
-			continue
-		}
-		if min.Value == 0 || value < min.Value {
-			min.Value = value
-			min.Date = d["FSRQ"].(string)
-		}
-		if max.Value == 0 || value > max.Value {
-			max.Value = value
-			max.Date = d["FSRQ"].(string)
-		}
-	}
-	return min, max
 }
 
 // PrettyPrint

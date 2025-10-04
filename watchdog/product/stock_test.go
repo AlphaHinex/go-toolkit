@@ -1,6 +1,7 @@
 package product
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -32,5 +33,13 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 	println(s.PrettyPrint())
 	if s.Price == 0 {
 		t.Error("Expected latest price to be non-zero")
+	}
+}
+
+func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
+	s := StockFactory{}.Build("002352.SZ")
+	ranges := GetHistoryValueRanges(s)
+	for _, r := range ranges {
+		fmt.Printf("%s: [%.2f,%.2f]\n", r.title, r.min, r.max)
 	}
 }
