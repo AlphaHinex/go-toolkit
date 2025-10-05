@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-toolkit/watchdog/utils"
-	"io"
 	"log"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -57,16 +55,9 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 		"fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57&iscca=1&fqt=1&"+
 		"secid=%s.%s&klt=%s&end=%s&lmt=%s",
 		marketCode, codeNumber, ktlAndLmt[0], todayStr, ktlAndLmt[1])
-	req, _ := http.NewRequest("GET", reqUrl, nil)
-	resp, err := utils.DoRequestWithRetry(req)
-	if err != nil {
-		log.Println("Error making GET request:", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
+	body := utils.HttpsGet(reqUrl)
 	var result map[string]interface{}
-	if err = json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		log.Println("Error unmarshalling JSON response:", err)
 	}
 	if result["data"] == nil {
@@ -157,16 +148,9 @@ func (s *Stock) RetrieveLatestPrice() {
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		marketCode, codeNumber)
-	req, _ := http.NewRequest("GET", reqUrl, nil)
-	resp, err := utils.DoRequestWithRetry(req)
-	if err != nil {
-		log.Println("Error making GET request:", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
+	body := utils.HttpsGet(reqUrl)
 	var result map[string]interface{}
-	if err = json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		log.Println("Error unmarshalling JSON response:", err)
 	}
 	data := result["data"].(map[string]interface{})
