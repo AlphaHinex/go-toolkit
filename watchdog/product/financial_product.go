@@ -2,13 +2,53 @@ package product
 
 import (
 	"go-toolkit/watchdog/utils"
+	"log"
 	"strings"
+	"sync"
 )
 
 // Factory defines an interface for retrieving and building financial products.
 type Factory interface {
-	GetAllCodes() []string              // fetching financial products' code.
-	Build(code string) FinancialProduct // build a financial product by code.
+	GetAllCodes() []string                        // fetching financial products' code.
+	Build(code string) FinancialProduct           // build a financial product by code.
+	SiftIn(item interface{}, verbose bool) string // sift in a financial product item and return its representation.
+}
+
+func Sift(factory Factory, verbose bool) string {
+	codes := factory.GetAllCodes() // 获取所有代码
+
+	var resultBuilder strings.Builder            // String builder to accumulate results
+	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
+	wg := &sync.WaitGroup{}                      // 创建 WaitGroup
+	concurrencyLimit := 8                        // 设置并发限制数量
+	sem := make(chan struct{}, concurrencyLimit) // 创建带缓冲的通道
+
+	for _, code := range codes {
+		wg.Add(1) // 增加一个任务
+		go func(code string) {
+			defer wg.Done() // 任务完成时减少计数
+
+			sem <- struct{}{}        // 占用一个并发槽
+			defer func() { <-sem }() // 释放并发槽
+
+			if verbose {
+				log.Printf("Processing code: %s\n", code)
+			}
+			item := factory.Build(code)
+			if result := factory.SiftIn(item, verbose); result != "" {
+				// Write to the string builder with mutex protection
+				mu.Lock()
+				resultBuilder.WriteString(result)
+				mu.Unlock()
+			}
+			if verbose {
+				log.Printf("Finished processing code: %s\n", code)
+			}
+		}(code)
+	}
+
+	wg.Wait() // 等待所有任务完成
+	return resultBuilder.String()
 }
 
 type FinancialProduct interface {

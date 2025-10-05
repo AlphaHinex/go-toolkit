@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -21,24 +20,24 @@ type Fund struct {
 	Manager     struct {
 		Id   string `yaml:"-"` // 基金经理 ID
 		Name string `yaml:"-"` // 基金经理名称
-	} `yaml:"-"`                 // 基金经理信息
+	} `yaml:"-"` // 基金经理信息
 	Cost   float64 `yaml:"cost"` // 基金成本价
 	Status struct {
 		Valid bool   `yaml:"-"` // 是否可买卖
 		Buy   string `yaml:"-"` // 买入状态
 		Sell  string `yaml:"-"` // 卖出状态
-	} `yaml:"-"`                        // 基金买卖状态
+	} `yaml:"-"` // 基金买卖状态
 	NetValue NetValue `yaml:"net"`      // 基金净值
 	Estimate Estimate `yaml:"estimate"` // 实时估算净值
 	Profit   struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
-	} `yaml:"-"`               // 基金净值收益率
+	} `yaml:"-"` // 基金净值收益率
 	Ended  bool `yaml:"ended"` // 当日监测是否已结束
 	Streak struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
-	} `yaml:"streak"`        // 连续上涨或下跌信息
+	} `yaml:"streak"` // 连续上涨或下跌信息
 	Scale float64 `yaml:"-"` // 基金规模（亿元）
 }
 
@@ -113,7 +112,7 @@ func (f *Fund) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 // FundFactory implements Factory for funds.
 type FundFactory struct{}
 
-func (f FundFactory) GetAllCodes() []string {
+func (f *FundFactory) GetAllCodes() []string {
 	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
 	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
 	matches := re.FindStringSubmatch(bodyStr)
@@ -131,12 +130,12 @@ func (f FundFactory) GetAllCodes() []string {
 }
 
 // Build 获得基金名称以及净值信息
-func (f FundFactory) Build(fundCode string) *Fund {
-	res, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {fundCode}})
+func (f *FundFactory) Build(code string) FinancialProduct {
+	res, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMApi/FundBaseTypeInformation.ashx", url.Values{"FCODE": {code}})
 	if res["Datas"] == nil {
-		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", fundCode)
+		log.Printf("未获取到基金 %s 的净值数据，可能是基金代码错误或该基金已被清盘", code)
 		return &Fund{
-			Code: fundCode,
+			Code: code,
 			Name: "未知基金",
 		}
 	} else {
@@ -152,13 +151,13 @@ func (f FundFactory) Build(fundCode string) *Fund {
 	scale = math.Round(scale*100) / 100
 
 	createdDate := "未知成立日期"
-	establishRes, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {fundCode}})
+	establishRes, _ := utils.GetFundHttpsResponse("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNDetailInformation", url.Values{"FCODE": {code}})
 	if establishRes["Datas"] != nil {
 		establishRes = establishRes["Datas"].(map[string]interface{})
 		createdDate = establishRes["ESTABDATE"].(string)
 	}
 	return &Fund{
-		Code:        fundCode,
+		Code:        code,
 		Name:        res["SHORTNAME"].(string),
 		CreatedDate: createdDate,
 		Manager: struct {
@@ -180,6 +179,27 @@ func (f FundFactory) Build(fundCode string) *Fund {
 		NetValue: netValue,
 		Scale:    scale,
 	}
+}
+
+func (f *FundFactory) SiftIn(item interface{}, verbose bool) string {
+	fund := item.(*Fund)
+	if !fund.Status.Valid && verbose {
+		log.Printf("跳过无法购买的基金: %s\n", fund.Code)
+		return ""
+	}
+	historyRow := fund.ComposeHistoryRow(fund.NetValue.Value)
+	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
+	// 筛选要显示的基金
+	if !strings.Contains(fund.Name, "债") &&
+		strings.Contains(historyRow, "连续") &&
+		fund.Scale > 10 &&
+		matched {
+		if verbose {
+			log.Printf("Matched fund: %s\n%s\n", fund.Name, historyRow)
+		}
+		return fmt.Sprintf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, historyRow)
+	}
+	return ""
 }
 
 // QueryStreakInfo
@@ -283,58 +303,6 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min, history.max, mark)
 	}
 	return historyRow
-}
-
-func Sift(verbose bool) string {
-	codes := FundFactory{}.GetAllCodes() // 获取所有基金代码
-
-	var resultBuilder strings.Builder            // String builder to accumulate results
-	var mu sync.Mutex                            // 用于保护文件写入的互斥锁
-	wg := &sync.WaitGroup{}                      // 创建 WaitGroup
-	concurrencyLimit := 8                        // 设置并发限制数量
-	sem := make(chan struct{}, concurrencyLimit) // 创建带缓冲的通道
-
-	for _, code := range codes {
-		wg.Add(1) // 增加一个任务
-		go func(code string) {
-			defer wg.Done() // 任务完成时减少计数
-
-			sem <- struct{}{}        // 占用一个并发槽
-			defer func() { <-sem }() // 释放并发槽
-
-			if verbose {
-				log.Printf("Processing fund code: %s\n", code)
-			}
-			fund := FundFactory{}.Build(code)
-
-			if !fund.Status.Valid && verbose {
-				log.Printf("跳过无法购买的基金: %s\n", code)
-				return
-			}
-			historyRow := fund.ComposeHistoryRow(fund.NetValue.Value)
-			matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
-			// 筛选要显示的基金
-			if !strings.Contains(fund.Name, "债") &&
-				strings.Contains(historyRow, "连续") &&
-				fund.Scale > 10 &&
-				matched {
-				if verbose {
-					log.Printf("Matched fund: %s\n%s\n", fund.Name, historyRow)
-				}
-				// Write to the string builder with mutex protection
-				mu.Lock()
-				// 写入文件
-				resultBuilder.WriteString(fmt.Sprintf("%s|%s\n最新净值：%.4f\n%s\n", code, fund.Name, fund.NetValue.Value, historyRow))
-				mu.Unlock()
-			}
-			if verbose {
-				log.Printf("Finished processing fund code: %s\n", code)
-			}
-		}(code)
-	}
-
-	wg.Wait() // 等待所有任务完成
-	return resultBuilder.String()
 }
 
 /**

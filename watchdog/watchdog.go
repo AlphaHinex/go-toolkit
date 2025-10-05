@@ -91,7 +91,7 @@ func main() {
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
-				service.Notify(configs, product.Sift(verbose))
+				service.Notify(configs, product.Sift(&product.FundFactory{}, verbose))
 				return nil
 			}
 
@@ -152,7 +152,7 @@ func main() {
 
 func watchFund(fund *product.Fund) {
 	// 获取基金最新净值
-	retrievedFund := product.FundFactory{}.Build(fund.Code)
+	retrievedFund := (&product.FundFactory{}).Build(fund.Code).(*product.Fund)
 	fund.Name = retrievedFund.Name
 	fund.NetValue = retrievedFund.NetValue
 	now, _ := utils.GetNow()
