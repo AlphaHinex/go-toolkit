@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
+	"io"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -57,7 +59,24 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 		"fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57&iscca=1&fqt=1&"+
 		"secid=%s.%s&klt=%s&end=%s&lmt=%s",
 		marketCode, codeNumber, ktlAndLmt[0], todayStr, ktlAndLmt[1])
-	body := utils.HttpsGet(reqUrl)
+
+	// 创建请求对象
+	req, err := http.NewRequest("GET", reqUrl, nil)
+	if err != nil {
+		log.Panic(err)
+	}
+	// 设置请求头
+	req.AddCookie(&http.Cookie{Name: "nid", Value: "123"})
+	// 发送请求
+	resp, err := utils.DoRequestWithRetry(req)
+	if err != nil {
+		log.Println("Error making GET request:", err)
+		return 0, 0
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		log.Println("Error unmarshalling JSON response:", err)

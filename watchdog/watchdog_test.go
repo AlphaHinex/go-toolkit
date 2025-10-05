@@ -58,7 +58,7 @@ func TestUseEmojiNumber(t *testing.T) {
 
 func TestSift(t *testing.T) {
 	t.Skip("Skipping TestSift for now")
-	result := product.Sift(product.FundFactory{}, false)
+	result := product.Sift(product.StockFactory{}, true)
 	if len(result) == 0 {
 		t.Error("Expected sift result to be non-empty")
 	}
