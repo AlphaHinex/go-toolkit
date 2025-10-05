@@ -107,6 +107,12 @@ func (s StockFactory) Build(stockCode string) *Stock {
 	bodyStr := utils.HttpsGet(reqUrl)
 	var jsonObject map[string]interface{}
 	_ = json.Unmarshal(bodyStr, &jsonObject)
+	if jsonObject["data"] == nil {
+		log.Printf("No data found for stock code: %s", stockCode)
+		return &Stock{
+			Code: stockCode,
+		}
+	}
 	data := jsonObject["data"].(map[string]interface{})
 	now, _ := utils.GetNow()
 	return &Stock{
