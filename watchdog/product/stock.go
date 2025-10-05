@@ -12,23 +12,14 @@ import (
 	"time"
 )
 
-var marketMap = map[string]string{
-	"SZ":  "0",   // 深证及其他
-	"SH":  "1",   // 上证
-	"UNK": "2",   // 未知
-	"HK":  "116", // 港股
-	"US":  "105", // 美股
-	"UK":  "155", // 英股
-}
-
 type Stock struct {
-	Code     string    `yaml:"-"`        // 股票代码
-	Market   string    `yaml:"market"`   // 0：其他；1：上证；2：未知；116：港股；105：美股；155：英股
-	Name     string    `yaml:"name"`     // 股票名称
-	Low      float64   `yaml:"low"`      // 监控阈值低点
-	High     float64   `yaml:"high"`     // 监控阈值高点
-	Datetime time.Time `yaml:"datetime"` // 股票最新更新时间
-	Price    float64   `yaml:"price"`    // 股票最新价格
+	Code        string    `yaml:"-"`        // 股票代码，如 300750.SZ
+	Name        string    `yaml:"name"`     // 股票名称
+	MarketValue float64   `yaml:"value"`    // 股票市值，单位：亿元
+	Low         float64   `yaml:"low"`      // 监控阈值低点
+	High        float64   `yaml:"high"`     // 监控阈值高点
+	Datetime    time.Time `yaml:"datetime"` // 股票最新更新时间
+	Price       float64   `yaml:"price"`    // 股票最新价格
 }
 
 func (s *Stock) IsTradingDay() bool {
@@ -60,11 +51,12 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 	now, _ := utils.GetNow()
 	todayStr := now.Format("20060102")
 
+	marketCode, codeNumber := s.getMarketAndCodeNumber()
 	// 获取股票k线数据
 	reqUrl := fmt.Sprintf("https://push2his.eastmoney.com/api/qt/stock/kline/get?"+
 		"fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57&iscca=1&fqt=1&"+
 		"secid=%s.%s&klt=%s&end=%s&lmt=%s",
-		s.Market, s.Code, ktlAndLmt[0], todayStr, ktlAndLmt[1])
+		marketCode, codeNumber, ktlAndLmt[0], todayStr, ktlAndLmt[1])
 	req, _ := http.NewRequest("GET", reqUrl, nil)
 	resp, err := utils.DoRequestWithRetry(req)
 	if err != nil {
@@ -76,6 +68,10 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 	var result map[string]interface{}
 	if err = json.Unmarshal(body, &result); err != nil {
 		log.Println("Error unmarshalling JSON response:", err)
+	}
+	if result["data"] == nil {
+		log.Printf("No data found for stock %s in range %s\n", s.Code, rangeStr)
+		return 0, 0
 	}
 	data := result["data"].(map[string]interface{})
 	klines := data["klines"].([]interface{})
@@ -100,10 +96,9 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 type StockFactory struct{}
 
 func (s StockFactory) GetAllCodes() []string {
-	// Example implementation for stock codes.
-	bodyStr := string(utils.HttpsGet("https://api.mairui.club/hslt/list/b997d4403688d5e66a"))
+	bodyStr := utils.HttpsGet("https://api.mairui.club/hslt/list/b997d4403688d5e66a")
 	var jsonArray []map[string]string
-	_ = json.Unmarshal([]byte(bodyStr), &jsonArray)
+	_ = json.Unmarshal(bodyStr, &jsonArray)
 	var codes []string
 	for _, item := range jsonArray {
 		codes = append(codes, item["dm"])
@@ -114,29 +109,54 @@ func (s StockFactory) GetAllCodes() []string {
 // Build constructs a Stock instance based on the provided stock code.
 // The stock code format should be like "000001.SZ" or "600000.SH".
 func (s StockFactory) Build(stockCode string) *Stock {
-	parts := strings.Split(stockCode, ".")
-	if len(parts) != 2 {
-		log.Fatalf("Invalid stock code format: %s", stockCode)
-		return &Stock{}
-	}
-	code := parts[0]
-	marketAbbr := strings.ToUpper(parts[1])
-	market, exists := marketMap[marketAbbr]
-	if !exists {
-		log.Fatalf("Unknown market abbreviation: %s", marketAbbr)
-		return &Stock{}
-	}
+	marketCode, codeNumber := (&Stock{Code: stockCode}).getMarketAndCodeNumber()
+	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
+		"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
+		"&secid=%s.%s", marketCode, codeNumber)
+	bodyStr := utils.HttpsGet(reqUrl)
+	var jsonObject map[string]interface{}
+	_ = json.Unmarshal(bodyStr, &jsonObject)
+	data := jsonObject["data"].(map[string]interface{})
+	now, _ := utils.GetNow()
 	return &Stock{
-		Code:   code,
-		Market: market,
+		Code:        stockCode,
+		Name:        data["f58"].(string),
+		MarketValue: data["f116"].(float64) / 100_000_000, // 单位：亿元
+		Price:       data["f43"].(float64) / 100,
+		Datetime:    now,
 	}
 }
 
+var marketMap = map[string]string{
+	"SZ":  "0",   // 深证及其他
+	"SH":  "1",   // 上证
+	"UNK": "2",   // 未知
+	"HK":  "116", // 港股
+	"US":  "105", // 美股
+	"UK":  "155", // 英股
+}
+
+func (s *Stock) getMarketAndCodeNumber() (string, string) {
+	parts := strings.Split(s.Code, ".")
+	if len(parts) != 2 {
+		log.Fatalf("Invalid stock code format: %s", s.Code)
+		return "", ""
+	}
+	marketAbbr := strings.ToUpper(parts[1])
+	marketCode, exists := marketMap[marketAbbr]
+	if !exists {
+		log.Fatalf("Unknown market abbreviation: %s", marketAbbr)
+		return "", ""
+	}
+	return marketCode, parts[0]
+}
+
 func (s *Stock) RetrieveLatestPrice() {
+	marketCode, codeNumber := s.getMarketAndCodeNumber()
 	// 获取股票最新价格
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
-		s.Market, s.Code)
+		marketCode, codeNumber)
 	req, _ := http.NewRequest("GET", reqUrl, nil)
 	resp, err := utils.DoRequestWithRetry(req)
 	if err != nil {

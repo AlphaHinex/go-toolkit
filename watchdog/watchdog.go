@@ -109,9 +109,6 @@ func main() {
 			var stocks []*product.Stock
 			for key, stock := range stocksMap {
 				stock.Code = key
-				if stock.Market == "" {
-					stock.Market = "1" // 默认上证
-				}
 				if stock.Low == 0 || stock.High == 0 {
 					log.Printf("股票 %s 未设置低点和高点，跳过监控\n", stock.Code)
 					continue

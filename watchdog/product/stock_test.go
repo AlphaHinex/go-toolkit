@@ -1,6 +1,7 @@
 package product
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -20,7 +21,9 @@ func TestStockFactory_GetAllCodes(t *testing.T) {
 
 func TestStockFactory_Build(t *testing.T) {
 	s := StockFactory{}.Build("688256.SH")
-	if s.Code != "688256" || s.Market != "1" {
+	content, _ := json.Marshal(s)
+	fmt.Println(string(content))
+	if s.MarketValue == 0 || s.Price == 0 {
 		t.Errorf("unexpected stock: %+v", s)
 	}
 }
@@ -37,8 +40,9 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 }
 
 func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
-	s := StockFactory{}.Build("002352.SZ")
+	s := StockFactory{}.Build("601965.SH")
 	ranges := GetHistoryValueRanges(s)
+	fmt.Printf("%s|%s:\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.MarketValue, s.Price)
 	for _, r := range ranges {
 		fmt.Printf("%s: [%.2f,%.2f]\n", r.title, r.min, r.max)
 	}
