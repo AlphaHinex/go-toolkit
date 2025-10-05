@@ -7,7 +7,7 @@ import (
 )
 
 func TestFundFactory_Build(t *testing.T) {
-	fund := FundFactory{}.Build("002401")
+	fund := FundFactory{}.Build("002401").(*Fund)
 	println(fund.Name)
 	println(fund.NetValue.Date)
 	if fund.Name == "" {
@@ -21,7 +21,7 @@ func TestFundFactory_Build(t *testing.T) {
 }
 
 func TestFund_ComposeHistoryRow(t *testing.T) {
-	fund := FundFactory{}.Build("011130")
+	fund := FundFactory{}.Build("011130").(*Fund)
 	row := fund.ComposeHistoryRow(fund.NetValue.Value)
 	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, row)
 	if row == "" {

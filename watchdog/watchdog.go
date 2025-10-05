@@ -152,7 +152,7 @@ func main() {
 
 func watchFund(fund *product.Fund) {
 	// 获取基金最新净值
-	retrievedFund := (&product.FundFactory{}).Build(fund.Code).(*product.Fund)
+	retrievedFund := product.FundFactory{}.Build(fund.Code).(*product.Fund)
 	fund.Name = retrievedFund.Name
 	fund.NetValue = retrievedFund.NetValue
 	now, _ := utils.GetNow()
