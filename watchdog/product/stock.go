@@ -3,8 +3,10 @@ package product
 import (
 	"encoding/json"
 	"fmt"
+	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -99,7 +101,7 @@ func (s StockFactory) GetAllCodes() []string {
 
 // Build constructs a Stock instance based on the provided stock code.
 // The stock code format should be like "000001.SZ" or "600000.SH".
-func (s StockFactory) Build(stockCode string) *Stock {
+func (s StockFactory) Build(stockCode string) FinancialProduct {
 	marketCode, codeNumber := (&Stock{Code: stockCode}).getMarketAndCodeNumber()
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
 		"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
@@ -122,6 +124,25 @@ func (s StockFactory) Build(stockCode string) *Stock {
 		Price:       data["f43"].(float64) / 100,
 		Datetime:    now,
 	}
+}
+
+func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
+	stock := item.(*Stock)
+	if stock.MarketValue < 10 { // 市值小于10亿的股票不监控
+		return ""
+	}
+	histories := GetHistoryValueRanges(stock)
+	historyRow := analysis.MarkValueInHistory(stock.Price, histories)
+	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
+	if matched && histories[0].Max-stock.Price > 10 {
+		result := fmt.Sprintf("%s|%s\n%.2f|%.2f亿\n%s\n",
+			stock.Code, stock.Name, stock.Price, stock.MarketValue, historyRow)
+		if verbose {
+			log.Printf("Matched stock: %s", result)
+		}
+		return result
+	}
+	return ""
 }
 
 var marketMap = map[string]string{

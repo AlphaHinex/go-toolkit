@@ -3,6 +3,7 @@ package product
 import (
 	"encoding/json"
 	"fmt"
+	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
 	"math"
@@ -281,82 +282,8 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
 
 	ranges := GetHistoryValueRanges(f)
-	idx, leftOrRight, exceeded := positionInHistory(markValue, ranges)
-
-	for i, history := range ranges {
-		mark := ""
-		if idx == i {
-			if exceeded {
-				if leftOrRight < 0 {
-					mark = "⏮️"
-				} else {
-					mark = "⏭️"
-				}
-			} else {
-				if leftOrRight < 0 {
-					mark = "◀️"
-				} else {
-					mark = "▶️"
-				}
-			}
-		}
-		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.title, history.min, history.max, mark)
-	}
+	historyRow += analysis.MarkValueInHistory(markValue, ranges)
 	return historyRow
-}
-
-/**
- * 查找某值在给定净值历史区间中所处的位置。
- * 返回值：历史区间数组位置索引，在所属区间偏左还是偏右（小于 0 偏左，大于 0 偏右），是否超过边界值
- */
-func positionInHistory(value float64, histories []HistoryValueRange) (int, int, bool) {
-	idx, leftOrRight, exceeded := -1, 0, false
-	for i, h := range histories {
-		if value >= h.min && value <= h.max {
-			idx = i
-			break
-		}
-	}
-	// 位于某区间内时，判断偏左还是偏右，并对对应侧的边界值进行向下穿透（下个历史数据区间对应侧边界值与当前区间一致时，idx 向下移动）
-	if idx > -1 {
-		if value < (histories[idx].min+histories[idx].max)/2 {
-			leftOrRight = -1
-		} else {
-			leftOrRight = 1
-		}
-		for i := idx; i < len(histories)-1; i++ {
-			if leftOrRight > 0 {
-				if histories[i].max == histories[i+1].max {
-					idx++
-				} else {
-					break
-				}
-			} else {
-				if histories[i].min == histories[i+1].min {
-					idx++
-				} else {
-					break
-				}
-			}
-		}
-		if value < (histories[idx].min+histories[idx].max)/2 {
-			leftOrRight = -1
-		} else {
-			leftOrRight = 1
-		}
-	}
-	// 超过所有历史之区间
-	if idx == -1 {
-		idx = len(histories) - 1
-		exceeded = true
-		if value < histories[idx].min {
-			leftOrRight = -1
-		}
-		if value > histories[idx].max {
-			leftOrRight = 1
-		}
-	}
-	return idx, leftOrRight, exceeded
 }
 
 func (f *Fund) GetNetValueDate() (time.Time, error) {

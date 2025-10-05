@@ -20,7 +20,7 @@ func TestStockFactory_GetAllCodes(t *testing.T) {
 }
 
 func TestStockFactory_Build(t *testing.T) {
-	s := StockFactory{}.Build("688256.SH")
+	s := StockFactory{}.Build("688256.SH").(*Stock)
 	content, _ := json.Marshal(s)
 	fmt.Println(string(content))
 	if s.MarketValue == 0 || s.Price == 0 {
@@ -29,7 +29,7 @@ func TestStockFactory_Build(t *testing.T) {
 }
 
 func TestStock_RetrieveLatestPrice(t *testing.T) {
-	s := StockFactory{}.Build("510210.SH")
+	s := StockFactory{}.Build("510210.SH").(*Stock)
 	s.Low = 0.7
 	s.High = 1.0
 	s.RetrieveLatestPrice()
@@ -40,10 +40,10 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 }
 
 func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
-	s := StockFactory{}.Build("002475.SZ")
+	s := StockFactory{}.Build("002475.SZ").(*Stock)
 	ranges := GetHistoryValueRanges(s)
 	fmt.Printf("%s|%s:\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.MarketValue, s.Price)
 	for _, r := range ranges {
-		fmt.Printf("%s: [%.2f,%.2f]\n", r.title, r.min, r.max)
+		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min, r.Max)
 	}
 }
