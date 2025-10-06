@@ -65,8 +65,6 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 	if err != nil {
 		log.Panic(err)
 	}
-	// 设置请求头
-	req.AddCookie(&http.Cookie{Name: "nid", Value: "123"})
 	// 发送请求
 	resp, err := utils.DoRequestWithRetry(req)
 	if err != nil {
