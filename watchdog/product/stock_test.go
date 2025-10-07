@@ -47,3 +47,12 @@ func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
 		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min, r.Max)
 	}
 }
+
+func TestSift(t *testing.T) {
+	t.Skip("Skipping TestSift for now")
+	result := Sift(StockFactory{}, true)
+	if len(result) == 0 {
+		t.Error("Expected sift result to be non-empty")
+	}
+	fmt.Println(result)
+}

@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
-	"io"
 	"log"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,13 +33,18 @@ func (s *Stock) IsTradable() bool {
 
 func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 	rangeMapping := map[string]string{
-		"m":   "101|30",   // 日k|30天
-		"3m":  "101|90",   // 日k|90天
-		"6m":  "101|180",  // 日k|180天
-		"y":   "101|365",  // 日k|365天
-		"3y":  "103|36",   // 月k|36个月
-		"5y":  "103|60",   // 月k|60个月
-		"all": "103|1200", // 月k|1200个月
+		"m":   "01|30",   // 日k|30天
+		"3m":  "01|90",   // 日k|90天
+		"6m":  "01|180",  // 日k|180天
+		"y":   "01|365",  // 日k|365天
+		"3y":  "21|36",   // 月k|36个月
+		"5y":  "21|60",   // 月k|60个月
+		"all": "21|1200", // 月k|1200个月
+	}
+
+	innerMarketMap := map[string]string{
+		"0": "33", // 深证及其他
+		"1": "17", // 上证
 	}
 
 	params, exists := rangeMapping[rangeStr]
@@ -50,48 +53,34 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 		return 0, 0
 	}
 	ktlAndLmt := strings.Split(params, "|")
-	now, _ := utils.GetNow()
-	todayStr := now.Format("20060102")
-
 	marketCode, codeNumber := s.getMarketAndCodeNumber()
 	// 获取股票k线数据
-	reqUrl := fmt.Sprintf("https://push2his.eastmoney.com/api/qt/stock/kline/get?"+
-		"fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57&iscca=1&fqt=1&"+
-		"secid=%s.%s&klt=%s&end=%s&lmt=%s",
-		marketCode, codeNumber, ktlAndLmt[0], todayStr, ktlAndLmt[1])
+	reqUrl := fmt.Sprintf("https://d.10jqka.com.cn/v6/line/%s_%s/%s/last%s.js",
+		innerMarketMap[marketCode], codeNumber, ktlAndLmt[0], ktlAndLmt[1])
+	bodyStr := string(utils.HttpsGet(reqUrl))
 
-	// 创建请求对象
-	req, err := http.NewRequest("GET", reqUrl, nil)
-	if err != nil {
-		log.Panic(err)
-	}
-	// 发送请求
-	resp, err := utils.DoRequestWithRetry(req)
-	if err != nil {
-		log.Println("Error making GET request:", err)
+	re := regexp.MustCompile(`(?s)quotebridge_v6_line_\d+_\d+_\d+_last\d+\((.*?)\)$`)
+	matches := re.FindStringSubmatch(bodyStr)
+	if len(matches) < 2 {
+		log.Printf("No k-line data found for stock %s in range %s\n", s.Code, rangeStr)
 		return 0, 0
 	}
-	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		log.Println("Error unmarshalling JSON response:", err)
-	}
-	if result["data"] == nil {
+	var jsonObj map[string]interface{}
+	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
+	if jsonObj["data"] == nil {
 		log.Printf("No data found for stock %s in range %s\n", s.Code, rangeStr)
 		return 0, 0
 	}
-	data := result["data"].(map[string]interface{})
-	klines := data["klines"].([]interface{})
+	data := jsonObj["data"].(string)
+	klines := strings.Split(data, ";")
 	var min, max float64
 	for _, kline := range klines {
-		// 时间,开盘,收盘,最高,最低,成交量,成交额
-		// "2025-09-30,10.85,11.22,11.87,9.93,10560100,11561278330.00"
-		parts := strings.Split(kline.(string), ",")
-		high, _ := strconv.ParseFloat(parts[3], 64)
-		low, _ := strconv.ParseFloat(parts[4], 64)
+		// 时间,开盘,最高,最低,收盘
+		// 20250930,11.34,11.42,11.18,11.22,41626229,469459340.00,3.500,,,0
+		parts := strings.Split(kline, ",")
+		high, _ := strconv.ParseFloat(parts[2], 64)
+		low, _ := strconv.ParseFloat(parts[3], 64)
 		if min == 0 || low < min {
 			min = low
 		}
@@ -134,11 +123,21 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 	}
 	data := jsonObject["data"].(map[string]interface{})
 	now, _ := utils.GetNow()
+	value, err := strconv.ParseFloat(fmt.Sprint(data["f116"]), 64)
+	if err != nil {
+		log.Printf("Error parsing market value for stock %s: %v", stockCode, err)
+		value = 0
+	}
+	price, err := strconv.ParseFloat(fmt.Sprint(data["f43"]), 64)
+	if err != nil {
+		log.Printf("Error parsing price for stock %s: %v", stockCode, err)
+		price = 0
+	}
 	return &Stock{
 		Code:        stockCode,
 		Name:        data["f58"].(string),
-		MarketValue: data["f116"].(float64) / 100_000_000, // 单位：亿元
-		Price:       data["f43"].(float64) / 100,
+		MarketValue: value / 100_000_000, // 单位：亿元
+		Price:       price / 100,
 		Datetime:    now,
 	}
 }
