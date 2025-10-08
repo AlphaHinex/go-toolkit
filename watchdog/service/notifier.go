@@ -8,9 +8,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 )
 
 func Notify(configs *Config, msg string) {
+	msg = strings.TrimSpace(msg)
 	if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
 		log.Println(msg)
 	}

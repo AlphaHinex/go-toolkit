@@ -60,7 +60,7 @@ func main() {
 			&cli.BoolFlag{
 				Name:     "sift",
 				Aliases:  []string{"s"},
-				Usage:    "Sift through all funds and notify result.",
+				Usage:    "Sift through all funds&stocks and notify result.",
 				Value:    false,
 				Required: false,
 			},
@@ -91,6 +91,7 @@ func main() {
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
+				service.Notify(configs, product.Sift(&product.StockFactory{}, verbose))
 				service.Notify(configs, product.Sift(&product.FundFactory{}, verbose))
 				return nil
 			}
