@@ -15,6 +15,7 @@ import (
 type Stock struct {
 	Code        string    `yaml:"-"`        // 股票代码，如 300750.SZ
 	Name        string    `yaml:"name"`     // 股票名称
+	CreatedDays int       `yaml:"-"`        // 成立天数
 	MarketValue float64   `yaml:"value"`    // 股票市值，单位：亿元
 	Low         float64   `yaml:"low"`      // 监控阈值低点
 	High        float64   `yaml:"high"`     // 监控阈值高点
@@ -33,18 +34,13 @@ func (s *Stock) IsTradable() bool {
 
 func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 	rangeMapping := map[string]string{
-		"m":   "01|30",   // 日k|30天
-		"3m":  "01|90",   // 日k|90天
-		"6m":  "01|180",  // 日k|180天
-		"y":   "01|365",  // 日k|365天
-		"3y":  "21|36",   // 月k|36个月
-		"5y":  "21|60",   // 月k|60个月
-		"all": "21|1200", // 月k|1200个月
-	}
-
-	innerMarketMap := map[string]string{
-		"0": "33", // 深证及其他
-		"1": "17", // 上证
+		"m":   "false|30",  // 日k|30天
+		"3m":  "false|90",  // 日k|90天
+		"6m":  "false|180", // 日k|180天
+		"y":   "false|365", // 日k|365天
+		"3y":  "true|36",   // 月k|36个月
+		"5y":  "true|60",   // 月k|60个月
+		"all": "true|1200", // 月k|1200个月
 	}
 
 	params, exists := rangeMapping[rangeStr]
@@ -53,21 +49,13 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 		return 0, 0
 	}
 	ktlAndLmt := strings.Split(params, "|")
-	marketCode, codeNumber := s.getMarketAndCodeNumber()
-	// 获取股票k线数据
-	reqUrl := fmt.Sprintf("https://d.10jqka.com.cn/v6/line/%s_%s/%s/last%s.js",
-		innerMarketMap[marketCode], codeNumber, ktlAndLmt[0], ktlAndLmt[1])
-	bodyStr := string(utils.HttpsGet(reqUrl))
-
-	re := regexp.MustCompile(`(?s)quotebridge_v6_line_\d+_\d+_\d+_last\d+\((.*?)\)$`)
-	matches := re.FindStringSubmatch(bodyStr)
-	if len(matches) < 2 {
-		log.Printf("No k-line data found for stock %s in range %s\n", s.Code, rangeStr)
+	lastN, _ := strconv.Atoi(ktlAndLmt[1])
+	isMonth, _ := strconv.ParseBool(ktlAndLmt[0])
+	jsonObj, err := utils.GetLastNDataFromThs(s.Code, lastN, isMonth)
+	if err != nil {
+		log.Printf(err.Error())
 		return 0, 0
 	}
-
-	var jsonObj map[string]interface{}
-	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
 	if jsonObj["data"] == nil {
 		log.Printf("No data found for stock %s in range %s\n", s.Code, rangeStr)
 		return 0, 0
@@ -108,7 +96,7 @@ func (s StockFactory) GetAllCodes() []string {
 // Build constructs a Stock instance based on the provided stock code.
 // The stock code format should be like "000001.SZ" or "600000.SH".
 func (s StockFactory) Build(stockCode string) FinancialProduct {
-	marketCode, codeNumber := (&Stock{Code: stockCode}).getMarketAndCodeNumber()
+	marketCode, codeNumber := utils.GetMarketAndCodeNumber(stockCode)
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
 		"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
 		"&secid=%s.%s", marketCode, codeNumber)
@@ -133,9 +121,12 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		log.Printf("Error parsing price for stock %s: %v", stockCode, err)
 		price = 0
 	}
+	jsonObj, _ := utils.GetLastNDataFromThs(stockCode, 1, false)
+	days, _ := strconv.Atoi(jsonObj["total"].(string))
 	return &Stock{
 		Code:        stockCode,
 		Name:        data["f58"].(string),
+		CreatedDays: days,
 		MarketValue: value / 100_000_000, // 单位：亿元
 		Price:       price / 100,
 		Datetime:    now,
@@ -144,7 +135,8 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
-	if stock.MarketValue < 10 { // 市值小于10亿的股票不监控
+	// 市值小于 10 亿或成立时长小于 30 个交易日的股票不监控
+	if stock.MarketValue < 10 || stock.CreatedDays < 30 {
 		return ""
 	}
 	histories := GetHistoryValueRanges(stock)
@@ -161,32 +153,8 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	return ""
 }
 
-var marketMap = map[string]string{
-	"SZ":  "0",   // 深证及其他
-	"SH":  "1",   // 上证
-	"UNK": "2",   // 未知
-	"HK":  "116", // 港股
-	"US":  "105", // 美股
-	"UK":  "155", // 英股
-}
-
-func (s *Stock) getMarketAndCodeNumber() (string, string) {
-	parts := strings.Split(s.Code, ".")
-	if len(parts) != 2 {
-		log.Fatalf("Invalid stock code format: %s", s.Code)
-		return "", ""
-	}
-	marketAbbr := strings.ToUpper(parts[1])
-	marketCode, exists := marketMap[marketAbbr]
-	if !exists {
-		log.Fatalf("Unknown market abbreviation: %s", marketAbbr)
-		return "", ""
-	}
-	return marketCode, parts[0]
-}
-
 func (s *Stock) RetrieveLatestPrice() {
-	marketCode, codeNumber := s.getMarketAndCodeNumber()
+	marketCode, codeNumber := utils.GetMarketAndCodeNumber(s.Code)
 	// 获取股票最新价格
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
