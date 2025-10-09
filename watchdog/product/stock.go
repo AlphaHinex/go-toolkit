@@ -122,7 +122,13 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		price = 0
 	}
 	jsonObj, _ := utils.GetLastNDataFromThs(stockCode, 1, false)
-	days, _ := strconv.Atoi(jsonObj["total"].(string))
+	days := 0
+	totalValue, ok := jsonObj["total"].(string)
+	if !ok {
+		log.Printf("Invalid type for 'total': expected string, got %T", jsonObj["total"])
+	} else {
+		days, _ = strconv.Atoi(totalValue)
+	}
 	return &Stock{
 		Code:        stockCode,
 		Name:        data["f58"].(string),
