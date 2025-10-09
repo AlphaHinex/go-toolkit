@@ -100,8 +100,9 @@ func DoRequestWithRetry(req *http.Request) (*http.Response, error) {
 
 		// 如果不是最后一次重试，等待一段时间后重试
 		if i < maxRetries {
-			log.Printf("%s 请求失败，稍后第 %d 次重试...\n错误信息：\n%v\n", req.URL, i+1, err)
-			time.Sleep(time.Duration(i) * retryDelay)
+			delay := retryDelay * (1 << i)
+			log.Printf("%s 请求失败，稍后（%v）第 %d 次重试...\n错误信息：\n%v\n", req.URL, delay, i+1, err)
+			time.Sleep(delay)
 		}
 	}
 
