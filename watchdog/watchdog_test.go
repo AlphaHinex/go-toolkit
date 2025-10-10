@@ -25,8 +25,7 @@ funds:
 	var config service.Config
 	_ = yaml.Unmarshal([]byte(yamlText), &config)
 	latestNetValueDate, _ := config.Funds["501203"].GetNetValueDate()
-	_, loc := utils.GetNow()
-	now, _ := time.ParseInLocation("2006-01-02 15:04", "2025-08-14 18:00", loc)
+	now, _ := time.ParseInLocation("2006-01-02 15:04", "2025-08-14 18:00", utils.GetNow().Location())
 	if !utils.IsSameDay(now, latestNetValueDate) {
 		t.Error("Expected net value date to be today")
 	}

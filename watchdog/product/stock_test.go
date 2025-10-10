@@ -9,7 +9,7 @@ import (
 
 func TestStockFactory_GetAllCodes(t *testing.T) {
 	codes := StockFactory{}.GetAllCodes()
-	println("total stocks: %d", len(codes))
+	println("total stocks: ", len(codes))
 	for _, c := range codes {
 		if strings.HasSuffix(c, ".SZ") || strings.HasSuffix(c, ".SH") {
 			continue
@@ -40,9 +40,9 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 }
 
 func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
-	s := StockFactory{}.Build("000603.SZ").(*Stock)
+	s := StockFactory{}.Build("600718.SH").(*Stock)
 	ranges := GetHistoryValueRanges(s)
-	fmt.Printf("%s|%s:\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.MarketValue, s.Price)
+	fmt.Printf("%s|%s:\n上市日期：%s\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.CreatedAt, s.MarketValue, s.Price)
 	for _, r := range ranges {
 		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min, r.Max)
 	}

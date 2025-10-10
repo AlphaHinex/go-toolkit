@@ -59,7 +59,7 @@ type NetValue struct {
 }
 
 func (f *Fund) IsTradingDay() bool {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	estimateTime, _ := f.getEstimateTime()
 	return utils.IsSameDay(now, estimateTime)
 }
@@ -208,7 +208,7 @@ func (f FundFactory) SiftIn(item interface{}, verbose bool) string {
 // 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
 // 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
 func (f *Fund) QueryStreakInfo() {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	if f.Streak.Info != "" && utils.IsSameDay(f.Streak.UpdateDate, now) {
 		return // 已经查询过了
 	}
@@ -287,17 +287,17 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 }
 
 func (f *Fund) GetNetValueDate() (time.Time, error) {
-	_, loc := utils.GetNow()
+	now := utils.GetNow()
 	// 获取净值日期
-	netValueDate, err := time.ParseInLocation("2006-01-02", f.NetValue.Date, loc)
+	netValueDate, err := time.ParseInLocation("2006-01-02", f.NetValue.Date, now.Location())
 	return netValueDate, err
 }
 
 // 返回当前东八区时间，基金最近的估值时间，以及净值日期
 func (f *Fund) getEstimateTime() (time.Time, error) {
-	_, loc := utils.GetNow()
+	now := utils.GetNow()
 	// 获取估值时间
-	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", f.Estimate.Datetime, loc)
+	estimateTime, err := time.ParseInLocation("2006-01-02 15:04", f.Estimate.Datetime, now.Location())
 	return estimateTime, err
 }
 
@@ -330,8 +330,8 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 	}
 
 	// 净值行
-	now, loc := utils.GetNow()
-	netValueDate, _ := time.ParseInLocation("2006-01-02", f.NetValue.Date, loc)
+	now := utils.GetNow()
+	netValueDate, _ := time.ParseInLocation("2006-01-02", f.NetValue.Date, now.Location())
 	netValueDateStr := "前日"
 	if utils.IsSameDay(now, netValueDate) {
 		netValueDateStr = "今日"
@@ -419,7 +419,7 @@ func (f *Fund) NeedToShowHistory() bool {
 }
 
 func (f *Fund) NeedToShowNetValue() bool {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	netValueDate, _ := f.GetNetValueDate()
 	if f.IsTradingDay() && utils.InBreakingTime() && f.Estimate.Changed {
 		log.Printf("%s 已更新上午最新估值\n", f.Name)

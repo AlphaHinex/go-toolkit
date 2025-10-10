@@ -15,6 +15,7 @@ import (
 type Stock struct {
 	Code        string    `yaml:"-"`        // 股票代码，如 300750.SZ
 	Name        string    `yaml:"name"`     // 股票名称
+	CreatedAt   time.Time `yaml:"-"`        // 成立日期
 	CreatedDays int       `yaml:"-"`        // 成立天数
 	MarketValue float64   `yaml:"value"`    // 股票市值，单位：亿元
 	Low         float64   `yaml:"low"`      // 监控阈值低点
@@ -24,7 +25,7 @@ type Stock struct {
 }
 
 func (s *Stock) IsTradingDay() bool {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	return utils.IsSameDay(s.Datetime, now)
 }
 
@@ -110,7 +111,7 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		}
 	}
 	data := jsonObject["data"].(map[string]interface{})
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	value, err := strconv.ParseFloat(fmt.Sprint(data["f116"]), 64)
 	if err != nil {
 		log.Printf("Error parsing market value for stock %s: %v", stockCode, err)
@@ -122,6 +123,11 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		price = 0
 	}
 	jsonObj, _ := utils.GetLastNDataFromThs(stockCode, 1, false)
+	var createdAt time.Time
+	start, ok := jsonObj["start"].(string)
+	if ok {
+		createdAt, _ = time.ParseInLocation("20060102", start, now.Location())
+	}
 	days := 0
 	totalValue, ok := jsonObj["total"].(string)
 	if !ok {
@@ -132,6 +138,7 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 	return &Stock{
 		Code:        stockCode,
 		Name:        data["f58"].(string),
+		CreatedAt:   createdAt,
 		CreatedDays: days,
 		MarketValue: value / 100_000_000, // 单位：亿元
 		Price:       price / 100,
@@ -175,8 +182,8 @@ func (s *Stock) RetrieveLatestPrice() {
 	trends := data["trends"].([]interface{})
 	lastRow := strings.Split(trends[len(trends)-1].(string), ",")
 	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
-	_, loc := utils.GetNow()
-	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], loc)
+	now := utils.GetNow()
+	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], now.Location())
 }
 
 // PrettyPrint

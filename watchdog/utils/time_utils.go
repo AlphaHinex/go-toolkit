@@ -2,7 +2,7 @@ package utils
 
 import "time"
 
-func GetNow() (time.Time, *time.Location) {
+func GetNow() time.Time {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		// Windows 环境使用 time.LoadLocation 报 panic: time: missing Location in call to Time.In
@@ -10,7 +10,7 @@ func GetNow() (time.Time, *time.Location) {
 	}
 	// 获取当前时间并转换为东八区时间
 	now := time.Now().In(loc)
-	return now, loc
+	return now
 }
 
 func IsSameDay(t1, t2 time.Time) bool {
@@ -18,7 +18,7 @@ func IsSameDay(t1, t2 time.Time) bool {
 }
 
 func InOpeningHours() bool {
-	now, _ := GetNow()
+	now := GetNow()
 	hour := now.Hour()
 	minute := now.Minute()
 
@@ -34,7 +34,7 @@ func InOpeningHours() bool {
 }
 
 func InBreakingTime() bool {
-	now, _ := GetNow()
+	now := GetNow()
 	hour := now.Hour()
 	minute := now.Minute()
 	return (hour == 11 && minute >= 30) || (hour == 12)

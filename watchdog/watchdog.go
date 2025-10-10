@@ -156,7 +156,7 @@ func watchFund(fund *product.Fund) {
 	retrievedFund := product.FundFactory{}.Build(fund.Code).(*product.Fund)
 	fund.Name = retrievedFund.Name
 	fund.NetValue = retrievedFund.NetValue
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	latestNetValueDate, _ := fund.GetNetValueDate()
 
 	if !utils.IsSameDay(now, latestNetValueDate) {
@@ -215,7 +215,7 @@ func filterFunds(funds []*product.Fund) []*product.Fund {
 }
 
 func conditionChain(fund *product.Fund) bool {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	estimateMargin, _ := strconv.ParseFloat(fund.Estimate.Margin, 64)
 	return isWatchTime(now) && ((fund.IsTradable() && (estimateMargin > 0 || fund.NeedToShowHistory())) || fund.NeedToShowNetValue())
 }
@@ -257,7 +257,7 @@ func addIndexRow() string {
 	indexUrl := "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f14&secids=1.000001,1.000300,0.399001,0.399006&_=1754373624121"
 	indexRes, _ := utils.GetFundHttpsResponse(indexUrl, nil)
 	indices := indexRes["data"].(map[string]interface{})["diff"].([]interface{})
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	indexRow := fmt.Sprintf("%s\n", now.Format("2006-01-02 15:04:05"))
 	for _, index := range indices {
 		entry := index.(map[string]interface{})

@@ -67,7 +67,7 @@ type FinancialProduct interface {
 // 1. 如果是交易日的开盘时间，且当前分钟为 48 分钟
 // 2. 交易日收盘后的 21:48
 func ShouldShowAll(product FinancialProduct) bool {
-	now, _ := utils.GetNow()
+	now := utils.GetNow()
 	hour := now.Hour()
 	minute := now.Minute()
 	return product.IsTradingDay() &&
