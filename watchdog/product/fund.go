@@ -278,10 +278,21 @@ func (f *Fund) QueryStreakInfo() {
  * 并根据传入的 markValue 值，在历史区间中标记出所在位置
  */
 func (f *Fund) ComposeHistoryRow(markValue float64) string {
+	ranges := GetHistoryValueRanges(f)
+	estimateValue, _ := strconv.ParseFloat(f.Estimate.Value, 64)
+	if markValue == estimateValue {
+		// 标记估值位置时，如果当日估值下跌但未低于月度最低值、或当日估值上涨但未高于月度最高值，不显示历史数据
+		if strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue > ranges[0].Min {
+			return ""
+		}
+		if !strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue < ranges[0].Max {
+			return ""
+		}
+	}
+
 	f.QueryStreakInfo()
 	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
 
-	ranges := GetHistoryValueRanges(f)
 	historyRow += analysis.MarkValueInHistory(markValue, ranges)
 	return historyRow
 }
@@ -354,7 +365,7 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 		estimateProfit := ""
 		if f.Cost > 0 {
 			mark := ""
-			if !strings.HasPrefix(f.Profit.Estimate, "-") {
+			if !strings.HasPrefix(f.Profit.Estimate, "-") && !strings.HasPrefix(f.Profit.Net, "-") {
 				mark = "💹"
 			}
 			// 估值收益为正标记 估值%
@@ -400,6 +411,7 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 	return result + "\n"
 }
 
+// NeedToShowHistory 是否需要显示历史数据
 func (f *Fund) NeedToShowHistory() bool {
 	if f.IsTradingDay() && (utils.InOpeningHours() || utils.InBreakingTime()) {
 		estimateMargin, _ := strconv.ParseFloat(f.Estimate.Margin, 64)
@@ -418,6 +430,7 @@ func (f *Fund) NeedToShowHistory() bool {
 	return false
 }
 
+// NeedToShowNetValue 是否需要显示净值
 func (f *Fund) NeedToShowNetValue() bool {
 	now := utils.GetNow()
 	netValueDate, _ := f.GetNetValueDate()

@@ -149,9 +149,10 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
 	// 市值小于 10 亿或成立时长小于 30 个交易日的股票不监控
-	if stock.MarketValue < 10 || stock.CreatedDays < 30 {
-		return ""
-	}
+	// TODO 暂时去掉此条件
+	//if stock.MarketValue < 10 || stock.CreatedDays < 30 {
+	//	return ""
+	//}
 	histories := GetHistoryValueRanges(stock)
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories)
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
