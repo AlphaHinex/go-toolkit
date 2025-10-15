@@ -49,7 +49,11 @@ func Sift(factory Factory, verbose bool) string {
 	}
 
 	wg.Wait() // 等待所有任务完成
-	return resultBuilder.String()
+	if resultBuilder.Len() == 0 {
+		return "No data available."
+	} else {
+		return resultBuilder.String()
+	}
 }
 
 type FinancialProduct interface {
