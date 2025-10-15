@@ -68,6 +68,10 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 		// 时间,开盘,最高,最低,收盘
 		// 20250930,11.34,11.42,11.18,11.22,41626229,469459340.00,3.500,,,0
 		parts := strings.Split(kline, ",")
+		if len(parts) < 4 {
+			log.Printf("Invalid kline data: %s", kline)
+			continue
+		}
 		high, _ := strconv.ParseFloat(parts[2], 64)
 		low, _ := strconv.ParseFloat(parts[3], 64)
 		if min == 0 || low < min {
