@@ -3,13 +3,10 @@ package utils
 import (
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strings"
 	"time"
 )
 
@@ -108,57 +105,4 @@ func DoRequestWithRetry(req *http.Request) (*http.Response, error) {
 
 	// 返回最后一次的响应或错误
 	return resp, err
-}
-
-// GetLastNDataFromThs 请求同花顺接口，处理掉 jsonp 函数，返回 json 数据对象
-// 目前支持查询日线和月线，默认日线，isMonth 为 true 时查询月线
-func GetLastNDataFromThs(stockCode string, lastN int, isMonth bool) (map[string]interface{}, error) {
-	innerMarketMap := map[string]string{
-		"0": "33", // 深证及其他
-		"1": "17", // 上证
-	}
-	marketCode, codeNumber := GetMarketAndCodeNumber(stockCode)
-
-	kLineType := "01"
-	if isMonth {
-		kLineType = "21"
-	}
-	// 获取股票k线数据
-	reqUrl := fmt.Sprintf("https://d.10jqka.com.cn/v6/line/%s_%s/%s/last%d.js",
-		innerMarketMap[marketCode], codeNumber, kLineType, lastN)
-	bodyStr := string(HttpsGet(reqUrl))
-	re := regexp.MustCompile(`(?s)quotebridge_v6_line_\d+_\d+_\d+_last\d+\((.*?)\)$`)
-	matches := re.FindStringSubmatch(bodyStr)
-	if len(matches) < 2 {
-		return nil, fmt.Errorf("Get unusual response format from: %s\n%s", reqUrl, bodyStr)
-	}
-
-	var jsonObj map[string]interface{}
-	_ = json.Unmarshal([]byte(matches[1]), &jsonObj)
-	return jsonObj, nil
-}
-
-func GetMarketAndCodeNumber(stockCode string) (string, string) {
-	// TODO 编码跟具体 API 绑定
-	marketMap := map[string]string{
-		"SZ":  "0",   // 深证及其他
-		"SH":  "1",   // 上证
-		"UNK": "2",   // 未知
-		"HK":  "116", // 港股
-		"US":  "105", // 美股
-		"UK":  "155", // 英股
-	}
-
-	parts := strings.Split(stockCode, ".")
-	if len(parts) != 2 {
-		log.Fatalf("Invalid stock code format: %s", stockCode)
-		return "", ""
-	}
-	marketAbbr := strings.ToUpper(parts[1])
-	marketCode, exists := marketMap[marketAbbr]
-	if !exists {
-		log.Fatalf("Unknown market abbreviation: %s", marketAbbr)
-		return "", ""
-	}
-	return marketCode, parts[0]
 }

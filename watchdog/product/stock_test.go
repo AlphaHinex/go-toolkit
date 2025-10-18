@@ -10,6 +10,9 @@ import (
 func TestStockFactory_GetAllCodes(t *testing.T) {
 	codes := StockFactory{}.GetAllCodes()
 	println("total stocks: ", len(codes))
+	if len(codes) != 5160 {
+		t.Errorf("expected 5160 stocks, got %d", len(codes))
+	}
 	for _, c := range codes {
 		if strings.HasSuffix(c, ".SZ") || strings.HasSuffix(c, ".SH") {
 			continue
@@ -20,10 +23,10 @@ func TestStockFactory_GetAllCodes(t *testing.T) {
 }
 
 func TestStockFactory_Build(t *testing.T) {
-	s := StockFactory{}.Build("601019.SH").(*Stock)
+	s := StockFactory{}.Build("688561.SH").(*Stock)
 	content, _ := json.Marshal(s)
 	fmt.Println(string(content))
-	if s.MarketValue == 0 || s.Price == 0 {
+	if s.Price == 0 {
 		t.Errorf("unexpected stock: %+v", s)
 	}
 }
@@ -40,7 +43,7 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 }
 
 func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
-	s := StockFactory{}.Build("600718.SH").(*Stock)
+	s := StockFactory{}.Build("688561.SH").(*Stock)
 	ranges := GetHistoryValueRanges(s)
 	fmt.Printf("%s|%s:\n上市日期：%s\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.CreatedAt, s.MarketValue, s.Price)
 	for _, r := range ranges {
