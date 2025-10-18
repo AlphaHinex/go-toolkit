@@ -26,7 +26,7 @@ func TestStockFactory_Build(t *testing.T) {
 	s := StockFactory{}.Build("688561.SH").(*Stock)
 	content, _ := json.Marshal(s)
 	fmt.Println(string(content))
-	if s.Price == 0 {
+	if s.MarketValue == 0 || s.Price == 0 {
 		t.Errorf("unexpected stock: %+v", s)
 	}
 }
