@@ -1,9 +1,12 @@
 package product
 
 import (
+	"fmt"
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -61,8 +64,10 @@ type FinancialProduct interface {
 	IsTradingDay() bool
 	// IsTradable 当前是否可交易
 	IsTradable() bool
+	// QueryHistoryValues 获取历史净值/价格数据
+	QueryHistoryValues() []analysis.HistoryValue
 	// QueryHistoryMinMaxValues 获取历史净值/价格最小值和最大值
-	QueryHistoryMinMaxValues(rangeStr string) (float64, float64)
+	//QueryHistoryMinMaxValues(rangeStr string) (analysis.HistoryValue, analysis.HistoryValue)
 }
 
 // ShouldShowAll
@@ -80,8 +85,11 @@ func ShouldShowAll(product FinancialProduct) bool {
 
 func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRange {
 	var ranges []analysis.HistoryValueRange
-	for _, s := range []string{"m|月度", "3m|季度", "6m|半年", "y|一年", "3y|三年", "5y|五年", "all|成立"} {
-		min, max := product.QueryHistoryMinMaxValues(strings.Split(s, "|")[0])
+	values := product.QueryHistoryValues()
+	for _, s := range strings.Split(fmt.Sprintf("%d|月度,%d|季度,%d|半年,%d|一年,%d|三年,%d|五年,%d|成立",
+		30, 30*3, 30*6, 365, 365*3, 365*5, math.MaxInt16), ",") {
+		rangeNum, _ := strconv.ParseFloat(strings.Split(s, "|")[0], 64)
+		min, max := queryHistoryMinMaxValues(values, rangeNum)
 		ranges = append(ranges, analysis.HistoryValueRange{
 			Title: strings.Split(s, "|")[1],
 			Min:   min,
@@ -89,4 +97,18 @@ func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRang
 		})
 	}
 	return ranges
+}
+
+func queryHistoryMinMaxValues(values []analysis.HistoryValue, rangeNum float64) (analysis.HistoryValue, analysis.HistoryValue) {
+	var min, max analysis.HistoryValue
+	for i := 0; i < int(math.Min(rangeNum, float64(len(values)))); i++ {
+		value := values[i]
+		if min.Value == 0 || value.Value < min.Value {
+			min = value
+		}
+		if max.Value == 0 || value.Value > max.Value {
+			max = value
+		}
+	}
+	return min, max
 }

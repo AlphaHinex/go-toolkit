@@ -1,11 +1,19 @@
 package analysis
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
+
+type HistoryValue struct {
+	Date  time.Time // 日期
+	Value float64   // 净值
+}
 
 type HistoryValueRange struct {
-	Title string  // 历史区间范围
-	Min   float64 // 历史区间最小净值
-	Max   float64 // 历史区间最大净值
+	Title string       // 历史区间范围
+	Min   HistoryValue // 历史区间最小净值
+	Max   HistoryValue // 历史区间最大净值
 }
 
 // MarkValueInHistory 生成历史值区间行
@@ -32,7 +40,7 @@ func MarkValueInHistory(markValue float64, histories []HistoryValueRange) string
 				}
 			}
 		}
-		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.Title, history.Min, history.Max, mark)
+		historyRow += fmt.Sprintf("%s：[%.4f, %.4f] %s\n", history.Title, history.Min.Value, history.Max.Value, mark)
 	}
 	return historyRow
 }
@@ -44,14 +52,14 @@ func MarkValueInHistory(markValue float64, histories []HistoryValueRange) string
 func positionInHistory(value float64, histories []HistoryValueRange) (int, int, bool) {
 	idx, leftOrRight, exceeded := -1, 0, false
 	for i, h := range histories {
-		if value >= h.Min && value <= h.Max {
+		if value >= h.Min.Value && value <= h.Max.Value {
 			idx = i
 			break
 		}
 	}
 	// 位于某区间内时，判断偏左还是偏右，并对对应侧的边界值进行向下穿透（下个历史数据区间对应侧边界值与当前区间一致时，idx 向下移动）
 	if idx > -1 {
-		if value < (histories[idx].Min+histories[idx].Max)/2 {
+		if value < (histories[idx].Min.Value+histories[idx].Max.Value)/2 {
 			leftOrRight = -1
 		} else {
 			leftOrRight = 1
@@ -71,7 +79,7 @@ func positionInHistory(value float64, histories []HistoryValueRange) (int, int, 
 				}
 			}
 		}
-		if value < (histories[idx].Min+histories[idx].Max)/2 {
+		if value < (histories[idx].Min.Value+histories[idx].Max.Value)/2 {
 			leftOrRight = -1
 		} else {
 			leftOrRight = 1
@@ -81,10 +89,10 @@ func positionInHistory(value float64, histories []HistoryValueRange) (int, int, 
 	if idx == -1 {
 		idx = len(histories) - 1
 		exceeded = true
-		if value < histories[idx].Min {
+		if value < histories[idx].Min.Value {
 			leftOrRight = -1
 		}
-		if value > histories[idx].Max {
+		if value > histories[idx].Max.Value {
 			leftOrRight = 1
 		}
 	}

@@ -39,7 +39,8 @@ type Fund struct {
 		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
 	} `yaml:"streak"` // 连续上涨或下跌信息
-	Scale float64 `yaml:"-"` // 基金规模（亿元）
+	Scale         float64                 `yaml:"-"` // 基金规模（亿元）
+	HistoryValues []analysis.HistoryValue `yaml:"-"` // 历史净值数据
 }
 
 // Estimate 实时估值结构体
@@ -68,24 +69,12 @@ func (f *Fund) IsTradable() bool {
 	return f.IsTradingDay() && utils.InOpeningHours()
 }
 
-func (f *Fund) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
-	rangeMapping := map[string]string{
-		"m":   "y",
-		"3m":  "3y",
-		"6m":  "6y",
-		"y":   "n",
-		"3y":  "3n",
-		"5y":  "5n",
-		"all": "ln",
-	}
-
-	var min, max NetValue
+func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
 	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
-		url.Values{"FCODE": {f.Code}, "RANGE": {rangeMapping[rangeStr]}})
+		url.Values{"FCODE": {f.Code}, "RANGE": {"ln"}})
 	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
-		log.Printf("未获取到基金 %s（%s:%s） 的历史净值数据，可能是基金代码错误或该基金已被清盘",
-			f.Code, rangeStr, rangeMapping[rangeStr])
-		return 0, 0
+		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", f.Code)
+		return f.HistoryValues
 	}
 	for _, data := range res["data"].([]interface{}) {
 		d := data.(map[string]interface{})
@@ -98,16 +87,13 @@ func (f *Fund) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 			log.Printf("解析基金 %s 历史净值数据失败: %v", f.Code, err)
 			continue
 		}
-		if min.Value == 0 || value < min.Value {
-			min.Value = value
-			min.Date = d["FSRQ"].(string)
-		}
-		if max.Value == 0 || value > max.Value {
-			max.Value = value
-			max.Date = d["FSRQ"].(string)
-		}
+		date, _ := time.ParseInLocation("2006-07-01", d["FSRQ"].(string), utils.GetNow().Location())
+		f.HistoryValues = append(f.HistoryValues, analysis.HistoryValue{
+			Date:  date,
+			Value: value,
+		})
 	}
-	return min.Value, max.Value
+	return f.HistoryValues
 }
 
 // FundFactory implements Factory for funds.
@@ -282,10 +268,10 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 	estimateValue, _ := strconv.ParseFloat(f.Estimate.Value, 64)
 	if markValue == estimateValue {
 		// 标记估值位置时，如果当日估值下跌但未低于月度最低值、或当日估值上涨但未高于月度最高值，不显示历史数据
-		if strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue > ranges[0].Min {
+		if strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue > ranges[0].Min.Value {
 			return ""
 		}
-		if !strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue < ranges[0].Max {
+		if !strings.HasPrefix(f.Estimate.Margin, "-") && estimateValue < ranges[0].Max.Value {
 			return ""
 		}
 	}

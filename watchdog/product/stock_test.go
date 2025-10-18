@@ -47,7 +47,7 @@ func TestStock_QueryHistoryMinMaxValues(t *testing.T) {
 	ranges := GetHistoryValueRanges(s)
 	fmt.Printf("%s|%s:\n上市日期：%s\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.CreatedAt, s.MarketValue, s.Price)
 	for _, r := range ranges {
-		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min, r.Max)
+		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min.Value, r.Max.Value)
 	}
 }
 

@@ -13,15 +13,16 @@ import (
 )
 
 type Stock struct {
-	Code        string    `yaml:"-"`        // 股票代码，如 300750.SZ
-	Name        string    `yaml:"name"`     // 股票名称
-	CreatedAt   time.Time `yaml:"-"`        // 成立日期
-	CreatedDays int       `yaml:"-"`        // 成立天数
-	MarketValue float64   `yaml:"value"`    // 股票市值，单位：亿元
-	Low         float64   `yaml:"low"`      // 监控阈值低点
-	High        float64   `yaml:"high"`     // 监控阈值高点
-	Datetime    time.Time `yaml:"datetime"` // 股票最新更新时间
-	Price       float64   `yaml:"price"`    // 股票最新价格
+	Code          string                  `yaml:"-"`        // 股票代码，如 300750.SZ
+	Name          string                  `yaml:"name"`     // 股票名称
+	CreatedAt     time.Time               `yaml:"-"`        // 成立日期
+	CreatedDays   int                     `yaml:"-"`        // 成立天数
+	MarketValue   float64                 `yaml:"value"`    // 股票市值，单位：亿元
+	Low           float64                 `yaml:"low"`      // 监控阈值低点
+	High          float64                 `yaml:"high"`     // 监控阈值高点
+	Datetime      time.Time               `yaml:"datetime"` // 股票最新更新时间
+	Price         float64                 `yaml:"price"`    // 股票最新价格
+	HistoryValues []analysis.HistoryValue `yaml:"-"`        // 历史价格数据
 }
 
 func (s *Stock) IsTradingDay() bool {
@@ -33,37 +34,18 @@ func (s *Stock) IsTradable() bool {
 	return s.IsTradingDay() && utils.InOpeningHours()
 }
 
-func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
-	rangeMapping := map[string]string{
-		"m":   "false|30",  // 日k|30天
-		"3m":  "false|90",  // 日k|90天
-		"6m":  "false|180", // 日k|180天
-		"y":   "false|365", // 日k|365天
-		"3y":  "true|36",   // 月k|36个月
-		"5y":  "true|60",   // 月k|60个月
-		"all": "true|1200", // 月k|1200个月
-	}
-
-	params, exists := rangeMapping[rangeStr]
-	if !exists {
-		log.Fatalf("Invalid range string: %s", rangeStr)
-		return 0, 0
-	}
-	ktlAndLmt := strings.Split(params, "|")
-	lastN, _ := strconv.Atoi(ktlAndLmt[1])
-	isMonth, _ := strconv.ParseBool(ktlAndLmt[0])
-	jsonObj, err := getLastNDataFromThs(s.Code, lastN, isMonth)
+func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
+	jsonObj, err := getLastNDataFromThs(s.Code, 365*100, false)
 	if err != nil {
 		log.Printf(err.Error())
-		return 0, 0
+		return s.HistoryValues
 	}
 	if jsonObj["data"] == nil {
-		log.Printf("No data found for stock %s in range %s\n", s.Code, rangeStr)
-		return 0, 0
+		log.Printf("No history value data found for stock %s\n", s.Code)
+		return s.HistoryValues
 	}
 	data := jsonObj["data"].(string)
 	klines := strings.Split(data, ";")
-	var min, max float64
 	for _, kline := range klines {
 		// 时间,开盘,最高,最低,收盘
 		// 20250930,11.34,11.42,11.18,11.22,41626229,469459340.00,3.500,,,0
@@ -72,16 +54,14 @@ func (s *Stock) QueryHistoryMinMaxValues(rangeStr string) (float64, float64) {
 			log.Printf("Invalid kline data: %s", kline)
 			continue
 		}
-		high, _ := strconv.ParseFloat(parts[2], 64)
-		low, _ := strconv.ParseFloat(parts[3], 64)
-		if min == 0 || low < min {
-			min = low
-		}
-		if max == 0 || high > max {
-			max = high
-		}
+		date, _ := time.ParseInLocation("20060102", parts[0], utils.GetNow().Location())
+		closed, _ := strconv.ParseFloat(parts[4], 64)
+		s.HistoryValues = append([]analysis.HistoryValue{{
+			Date:  date,
+			Value: closed,
+		}}, s.HistoryValues...)
 	}
-	return min, max
+	return s.HistoryValues
 }
 
 // StockFactory implements Factory for stocks.
@@ -155,7 +135,7 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	histories := GetHistoryValueRanges(stock)
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories)
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
-	if matched && histories[0].Max-stock.Price > 10 {
+	if matched && histories[0].Max.Value-stock.Price > 10 {
 		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n",
 			stock.Code, stock.Name, stock.Price, stock.MarketValue, historyRow)
 		if verbose {
