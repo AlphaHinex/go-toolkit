@@ -68,7 +68,7 @@ func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
 type StockFactory struct{}
 
 func (s StockFactory) GetAllCodes() []string {
-	bodyStr := utils.HttpsGet("https://api.mairui.club/hslt/list/b997d4403688d5e66a")
+	bodyStr := utils.HttpsGet("https://api.biyingapi.com/hslt/list/biyinglicence")
 	var jsonArray []map[string]string
 	_ = json.Unmarshal(bodyStr, &jsonArray)
 	var codes []string
