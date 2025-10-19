@@ -91,11 +91,21 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 	days := 0
 	totalValue, ok := jsonObj["total"].(string)
 	if !ok {
-		log.Printf("Invalid type for 'total': expected string, got %T", jsonObj["total"])
+		if fmt.Sprintf("%T", jsonObj["total"]) == "float64" {
+			days, _ = jsonObj["total"].(int)
+		} else {
+			log.Printf("Invalid type for 'total': expected string, got %T %v", jsonObj["total"], jsonObj["total"])
+		}
 	} else {
 		days, _ = strconv.Atoi(totalValue)
 	}
-	price, _ := strconv.ParseFloat(strings.Split(jsonObj["data"].(string), ",")[4], 64)
+	data := strings.Split(jsonObj["data"].(string), ",")
+	price := 0.0
+	if len(data) < 4 {
+		log.Printf("Invalid kline data: %s", jsonObj["data"])
+	} else {
+		price, _ = strconv.ParseFloat(strings.Split(jsonObj["data"].(string), ",")[4], 64)
+	}
 
 	marketCode, codeNumber := getMarketAndCodeNumber(stockCode)
 	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+

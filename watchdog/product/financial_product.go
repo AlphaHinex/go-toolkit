@@ -90,6 +90,9 @@ func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRang
 		30, 30*3, 30*6, 365, 365*3, 365*5, math.MaxInt16), ",") {
 		rangeNum, _ := strconv.ParseFloat(strings.Split(s, "|")[0], 64)
 		min, max := queryHistoryMinMaxValues(values, rangeNum)
+		if min.Value == 0 && max.Value == 0 {
+			continue
+		}
 		ranges = append(ranges, analysis.HistoryValueRange{
 			Title: strings.Split(s, "|")[1],
 			Min:   min,
@@ -101,6 +104,9 @@ func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRang
 
 func queryHistoryMinMaxValues(values []analysis.HistoryValue, rangeNum float64) (analysis.HistoryValue, analysis.HistoryValue) {
 	var min, max analysis.HistoryValue
+	if rangeNum != math.MaxInt16 && rangeNum > float64(len(values)) {
+		return min, max
+	}
 	for i := 0; i < int(math.Min(rangeNum, float64(len(values)))); i++ {
 		value := values[i]
 		if min.Value == 0 || value.Value < min.Value {
