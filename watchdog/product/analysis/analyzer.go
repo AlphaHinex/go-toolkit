@@ -86,7 +86,7 @@ func positionInHistory(value float64, histories []HistoryValueRange) (int, int, 
 		}
 	}
 	// 超过所有历史之区间
-	if idx == -1 {
+	if idx == -1 && len(histories) > 0 {
 		idx = len(histories) - 1
 		exceeded = true
 		if value < histories[idx].Min.Value {
