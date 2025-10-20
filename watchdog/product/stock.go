@@ -107,31 +107,31 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		price, _ = strconv.ParseFloat(strings.Split(jsonObj["data"].(string), ",")[4], 64)
 	}
 
-	marketCode, codeNumber := getMarketAndCodeNumber(stockCode)
-	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
-		"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
-		"&secid=%s.%s", marketCode, codeNumber)
-	bodyStr := utils.HttpsGet(reqUrl)
-	value := 0.0
-	var jsonObject map[string]interface{}
-	_ = json.Unmarshal(bodyStr, &jsonObject)
-	if jsonObject["data"] != nil {
-		data := jsonObject["data"].(map[string]interface{})
-		value, _ = strconv.ParseFloat(fmt.Sprint(data["f116"]), 64)
-		p, _ := strconv.ParseFloat(fmt.Sprint(data["f43"]), 64)
-		if p > 0 {
-			price = p
-		}
-	}
+	//marketCode, codeNumber := getMarketAndCodeNumber(stockCode)
+	//reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
+	//	"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
+	//	"&secid=%s.%s", marketCode, codeNumber)
+	//bodyStr := utils.HttpsGet(reqUrl)
+	//value := 0.0
+	//var jsonObject map[string]interface{}
+	//_ = json.Unmarshal(bodyStr, &jsonObject)
+	//if jsonObject["data"] != nil {
+	//	data := jsonObject["data"].(map[string]interface{})
+	//	value, _ = strconv.ParseFloat(fmt.Sprint(data["f116"]), 64)
+	//	p, _ := strconv.ParseFloat(fmt.Sprint(data["f43"]), 64)
+	//	if p > 0 {
+	//		price = p / 100
+	//	}
+	//}
 
 	return &Stock{
 		Code:        stockCode,
 		Name:        jsonObj["name"].(string),
 		CreatedAt:   createdAt,
 		CreatedDays: days,
-		MarketValue: value / 100_000_000, // 单位：亿元
-		Price:       price / 100,
-		Datetime:    now,
+		//MarketValue: value / 100_000_000, // 单位：亿元
+		Price:    price,
+		Datetime: now,
 	}
 }
 
