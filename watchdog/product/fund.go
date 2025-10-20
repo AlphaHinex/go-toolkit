@@ -87,7 +87,7 @@ func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
 			log.Printf("解析基金 %s 历史净值数据失败: %v", f.Code, err)
 			continue
 		}
-		date, _ := time.ParseInLocation("2006-07-01", d["FSRQ"].(string), utils.GetNow().Location())
+		date, _ := time.ParseInLocation("2006-01-02", d["FSRQ"].(string), utils.GetNow().Location())
 		f.HistoryValues = append(f.HistoryValues, analysis.HistoryValue{
 			Date:  date,
 			Value: value,

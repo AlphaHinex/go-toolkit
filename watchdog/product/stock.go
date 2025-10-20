@@ -56,10 +56,10 @@ func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
 		}
 		date, _ := time.ParseInLocation("20060102", parts[0], utils.GetNow().Location())
 		closed, _ := strconv.ParseFloat(parts[4], 64)
-		s.HistoryValues = append([]analysis.HistoryValue{{
+		s.HistoryValues = append(s.HistoryValues, analysis.HistoryValue{
 			Date:  date,
 			Value: closed,
-		}}, s.HistoryValues...)
+		})
 	}
 	return s.HistoryValues
 }

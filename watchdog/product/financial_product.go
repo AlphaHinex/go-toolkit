@@ -64,7 +64,7 @@ type FinancialProduct interface {
 	IsTradingDay() bool
 	// IsTradable 当前是否可交易
 	IsTradable() bool
-	// QueryHistoryValues 获取历史净值/价格数据
+	// QueryHistoryValues 获取历史净值/价格数据，按日期正序排列
 	QueryHistoryValues() []analysis.HistoryValue
 	// QueryHistoryMinMaxValues 获取历史净值/价格最小值和最大值
 	//QueryHistoryMinMaxValues(rangeStr string) (analysis.HistoryValue, analysis.HistoryValue)
@@ -86,6 +86,10 @@ func ShouldShowAll(product FinancialProduct) bool {
 func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRange {
 	var ranges []analysis.HistoryValueRange
 	values := product.QueryHistoryValues()
+	// 将 values 倒序排列
+	for i, j := 0, len(values)-1; i < j; i, j = i+1, j-1 {
+		values[i], values[j] = values[j], values[i]
+	}
 	for _, s := range strings.Split(fmt.Sprintf("%d|月度,%d|季度,%d|半年,%d|一年,%d|三年,%d|五年,%d|成立",
 		30, 30*3, 30*6, 365, 365*3, 365*5, math.MaxInt16), ",") {
 		rangeNum, _ := strconv.ParseFloat(strings.Split(s, "|")[0], 64)

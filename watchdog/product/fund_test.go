@@ -21,7 +21,7 @@ func TestFundFactory_Build(t *testing.T) {
 }
 
 func TestFund_ComposeHistoryRow(t *testing.T) {
-	fund := FundFactory{}.Build("011130").(*Fund)
+	fund := FundFactory{}.Build("008099").(*Fund)
 	row := fund.ComposeHistoryRow(fund.NetValue.Value)
 	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, row)
 	if row == "" {
