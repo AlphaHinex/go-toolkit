@@ -23,7 +23,7 @@ var showAll bool
 func main() {
 	app := &cli.App{
 		Name:    "watchdog",
-		Usage:   "Watchdog of fund",
+		Usage:   "Watchdog of funds & stocks.\nexport BYAPI_LICENCE=xxx && watchdog [flags]",
 		Version: "v2.6.2",
 		Flags: []cli.Flag{
 			&cli.StringFlag{

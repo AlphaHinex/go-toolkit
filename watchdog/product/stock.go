@@ -6,6 +6,8 @@ import (
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
+	"math"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -107,29 +109,12 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		price, _ = strconv.ParseFloat(strings.Split(jsonObj["data"].(string), ",")[4], 64)
 	}
 
-	//marketCode, codeNumber := getMarketAndCodeNumber(stockCode)
-	//reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/get?invt=2"+
-	//	"&fields=f19,f20,f23,f24,f25,f26,f27,f28,f29,f30,f43,f44,f45,f46,f47,f48,f49,f50,f57,f58,f59,f60,f113,f114,f115,f116,f117,f127,f130,f131,f132,f133,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f152,f161,f162,f164,f165,f167,f168,f169,f170,f171,f174,f175,f177,f178,f198,f199,f294,f530,f531"+
-	//	"&secid=%s.%s", marketCode, codeNumber)
-	//bodyStr := utils.HttpsGet(reqUrl)
-	//value := 0.0
-	//var jsonObject map[string]interface{}
-	//_ = json.Unmarshal(bodyStr, &jsonObject)
-	//if jsonObject["data"] != nil {
-	//	data := jsonObject["data"].(map[string]interface{})
-	//	value, _ = strconv.ParseFloat(fmt.Sprint(data["f116"]), 64)
-	//	p, _ := strconv.ParseFloat(fmt.Sprint(data["f43"]), 64)
-	//	if p > 0 {
-	//		price = p / 100
-	//	}
-	//}
-
 	return &Stock{
 		Code:        stockCode,
 		Name:        jsonObj["name"].(string),
 		CreatedAt:   createdAt,
 		CreatedDays: days,
-		//MarketValue: value / 100_000_000, // 单位：亿元
+		//MarketValue: value, // 单位：亿元
 		Price:    price,
 		Datetime: now,
 	}
@@ -137,15 +122,11 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
-	// 市值小于 10 亿或成立时长小于 30 个交易日的股票不监控
-	// TODO 暂时去掉此条件
-	//if stock.MarketValue < 10 || stock.CreatedDays < 30 {
-	//	return ""
-	//}
 	histories := GetHistoryValueRanges(stock)
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories)
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
 	if matched && histories[0].Max.Value-stock.Price > 10 {
+		stock.RetrieveMarketValue()
 		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n",
 			stock.Code, stock.Name, stock.Price, stock.MarketValue, historyRow)
 		if verbose {
@@ -174,6 +155,21 @@ func (s *Stock) RetrieveLatestPrice() {
 	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
 	now := utils.GetNow()
 	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], now.Location())
+}
+
+func (s *Stock) RetrieveMarketValue() {
+	_, codeNumber := getMarketAndCodeNumber(s.Code)
+	licence := os.Getenv("BYAPI_LICENCE")
+	if licence != "" {
+		bodyStr := utils.HttpsGet(fmt.Sprintf("https://api.biyingapi.com/hscp/gsjj/%s/%s", codeNumber, licence))
+		var byRes map[string]interface{}
+		_ = json.Unmarshal(bodyStr, &byRes)
+		if byRes["rprice"] != nil {
+			re := regexp.MustCompile(`\d+`)
+			rprice, _ := strconv.ParseFloat(re.FindString(byRes["rprice"].(string)), 64)
+			s.MarketValue = math.Round(rprice*s.Price*10_000/100_000_000*100) / 100 // 单位：亿元
+		}
+	}
 }
 
 // PrettyPrint
