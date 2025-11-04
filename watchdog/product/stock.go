@@ -140,7 +140,7 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 func (s *Stock) RetrieveLatestPrice() {
 	marketCode, codeNumber := getMarketAndCodeNumber(s.Code)
 	// 获取股票最新价格
-	reqUrl := fmt.Sprintf("https://push2.eastmoney.com/api/qt/stock/trends2/get?"+
+	reqUrl := fmt.Sprintf("https://push2delay.eastmoney.com/api/qt/stock/trends2/get?"+
 		"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f53,f56,f58&iscr=0&iscca=0&secid=%s.%s",
 		marketCode, codeNumber)
 	body := utils.HttpsGet(reqUrl)
