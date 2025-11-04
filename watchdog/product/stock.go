@@ -146,15 +146,16 @@ func (s *Stock) RetrieveLatestPrice() {
 	body := utils.HttpsGet(reqUrl)
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		log.Println("Error unmarshalling JSON response:", err)
+		log.Printf("Error unmarshalling JSON response %v:%v", body, err)
+	} else {
+		data := result["data"].(map[string]interface{})
+		s.Name = data["name"].(string)
+		trends := data["trends"].([]interface{})
+		lastRow := strings.Split(trends[len(trends)-1].(string), ",")
+		s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
+		now := utils.GetNow()
+		s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], now.Location())
 	}
-	data := result["data"].(map[string]interface{})
-	s.Name = data["name"].(string)
-	trends := data["trends"].([]interface{})
-	lastRow := strings.Split(trends[len(trends)-1].(string), ",")
-	s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
-	now := utils.GetNow()
-	s.Datetime, _ = time.ParseInLocation("2006-01-02 15:04", lastRow[0], now.Location())
 }
 
 func (s *Stock) RetrieveMarketValue() {
