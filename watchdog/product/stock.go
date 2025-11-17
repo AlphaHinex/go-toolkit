@@ -109,7 +109,7 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		price, _ = strconv.ParseFloat(strings.Split(jsonObj["data"].(string), ",")[4], 64)
 	}
 
-	return &Stock{
+	stock := &Stock{
 		Code:        stockCode,
 		Name:        jsonObj["name"].(string),
 		CreatedAt:   createdAt,
@@ -118,6 +118,8 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		Price:    price,
 		Datetime: now,
 	}
+	stock.RetrieveLatestPrice()
+	return stock
 }
 
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
@@ -147,7 +149,7 @@ func (s *Stock) RetrieveLatestPrice() {
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		log.Printf("Error unmarshalling JSON response %v:%v", body, err)
-	} else {
+	} else if result["data"] != nil {
 		data := result["data"].(map[string]interface{})
 		s.Name = data["name"].(string)
 		trends := data["trends"].([]interface{})
