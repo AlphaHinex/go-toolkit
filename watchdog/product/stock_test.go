@@ -10,8 +10,8 @@ import (
 func TestStockFactory_GetAllCodes(t *testing.T) {
 	codes := StockFactory{}.GetAllCodes()
 	println("total stocks: ", len(codes))
-	if len(codes) != 5164 {
-		t.Errorf("expected 5160=>5164 stocks, got %d", len(codes))
+	if len(codes) != 5168 {
+		t.Errorf("expected 5160=>5164=>5168 stocks, got %d", len(codes))
 	}
 	for _, c := range codes {
 		if strings.HasSuffix(c, ".SZ") || strings.HasSuffix(c, ".SH") {

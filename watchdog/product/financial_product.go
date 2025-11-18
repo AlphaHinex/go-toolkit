@@ -1,14 +1,13 @@
 package product
 
 import (
-	"fmt"
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Factory defines an interface for retrieving and building financial products.
@@ -86,19 +85,29 @@ func ShouldShowAll(product FinancialProduct) bool {
 func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRange {
 	var ranges []analysis.HistoryValueRange
 	values := product.QueryHistoryValues()
-	// 将 values 倒序排列
+	// 将 values 倒序，按日期从近到远排列
 	for i, j := 0, len(values)-1; i < j; i, j = i+1, j-1 {
 		values[i], values[j] = values[j], values[i]
 	}
-	for _, s := range strings.Split(fmt.Sprintf("%d|月度,%d|季度,%d|半年,%d|一年,%d|三年,%d|五年,%d|成立",
-		30, 30*3, 30*6, 365, 365*3, 365*5, math.MaxInt16), ",") {
-		rangeNum, _ := strconv.ParseFloat(strings.Split(s, "|")[0], 64)
-		min, max := queryHistoryMinMaxValues(values, rangeNum)
-		if min.Value == 0 && max.Value == 0 {
+
+	rangeMap := map[string]time.Time{
+		"月度": utils.LastMonth(),
+		"季度": utils.LastQuarter(),
+		"半年": utils.LastSixMonths(),
+		"一年": utils.LastYear(),
+		"三年": utils.LastThreeYears(),
+		"五年": utils.LastFiveYears(),
+		"成立": utils.EarliestTime(),
+	}
+
+	for _, s := range []string{"月度", "季度", "半年", "一年", "三年", "五年", "成立"} {
+		startDate := rangeMap[s]
+		min, max := queryHistoryMinMaxValues(values, startDate)
+		if min.Value == math.MaxInt16 && max.Value == math.MinInt16 {
 			continue
 		}
 		ranges = append(ranges, analysis.HistoryValueRange{
-			Title: strings.Split(s, "|")[1],
+			Title: s,
 			Min:   min,
 			Max:   max,
 		})
@@ -106,17 +115,23 @@ func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRang
 	return ranges
 }
 
-func queryHistoryMinMaxValues(values []analysis.HistoryValue, rangeNum float64) (analysis.HistoryValue, analysis.HistoryValue) {
-	var min, max analysis.HistoryValue
-	if rangeNum != math.MaxInt16 && rangeNum > float64(len(values)) {
-		return min, max
+func queryHistoryMinMaxValues(values []analysis.HistoryValue, startDate time.Time) (analysis.HistoryValue, analysis.HistoryValue) {
+	var min = analysis.HistoryValue{
+		Value: math.MaxInt16,
+		Date:  utils.GetNow(),
 	}
-	for i := 0; i < int(math.Min(rangeNum, float64(len(values)))); i++ {
-		value := values[i]
-		if min.Value == 0 || value.Value < min.Value {
+	var max = analysis.HistoryValue{
+		Value: math.MinInt16,
+		Date:  utils.GetNow(),
+	}
+	for _, value := range values {
+		if value.Date.Before(startDate) {
+			break
+		}
+		if value.Value < min.Value {
 			min = value
 		}
-		if max.Value == 0 || value.Value > max.Value {
+		if value.Value > max.Value {
 			max = value
 		}
 	}

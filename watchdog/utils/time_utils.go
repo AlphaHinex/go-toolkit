@@ -39,3 +39,31 @@ func InBreakingTime() bool {
 	minute := now.Minute()
 	return (hour == 11 && minute >= 30) || (hour == 12)
 }
+
+func LastMonth() time.Time {
+	return GetNow().AddDate(0, -1, 0)
+}
+
+func LastQuarter() time.Time {
+	return GetNow().AddDate(0, -3, 0)
+}
+
+func LastSixMonths() time.Time {
+	return GetNow().AddDate(0, -6, 0)
+}
+
+func LastYear() time.Time {
+	return GetNow().AddDate(-1, 0, 0)
+}
+
+func LastThreeYears() time.Time {
+	return GetNow().AddDate(-3, 0, 0)
+}
+
+func LastFiveYears() time.Time {
+	return GetNow().AddDate(-5, 0, 0)
+}
+
+func EarliestTime() time.Time {
+	return time.Date(1678, 1, 1, 0, 0, 0, 0, time.UTC)
+}

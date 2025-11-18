@@ -352,6 +352,7 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 		if f.Cost > 0 {
 			mark := ""
 			if !strings.HasPrefix(f.Profit.Estimate, "-") && !strings.HasPrefix(f.Profit.Net, "-") {
+				// 💹 => 📈 📉
 				mark = "📈"
 			}
 			// 估值收益为正标记 估值%
