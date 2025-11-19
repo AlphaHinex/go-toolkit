@@ -65,8 +65,6 @@ type FinancialProduct interface {
 	IsTradable() bool
 	// QueryHistoryValues 获取历史净值/价格数据，按日期正序排列
 	QueryHistoryValues() []analysis.HistoryValue
-	// QueryHistoryMinMaxValues 获取历史净值/价格最小值和最大值
-	//QueryHistoryMinMaxValues(rangeStr string) (analysis.HistoryValue, analysis.HistoryValue)
 }
 
 // ShouldShowAll
@@ -115,6 +113,7 @@ func GetHistoryValueRanges(product FinancialProduct) []analysis.HistoryValueRang
 	return ranges
 }
 
+// queryHistoryMinMaxValues 获取 startDate 至今的历史净值/价格最小值和最大值
 func queryHistoryMinMaxValues(values []analysis.HistoryValue, startDate time.Time) (analysis.HistoryValue, analysis.HistoryValue) {
 	var min = analysis.HistoryValue{
 		Value: math.MaxInt16,
