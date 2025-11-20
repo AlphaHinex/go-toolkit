@@ -279,7 +279,11 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 	f.QueryStreakInfo()
 	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
 
-	historyRow += analysis.MarkValueInHistory(markValue, ranges)
+	isRise := estimateValue > f.NetValue.Value
+	if estimateValue == 0 {
+		isRise = strings.Contains(f.Streak.Info, "🔺")
+	}
+	historyRow += analysis.MarkValueInHistory(markValue, ranges, isRise)
 	return historyRow
 }
 

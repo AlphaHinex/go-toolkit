@@ -24,6 +24,7 @@ type Stock struct {
 	High          float64                 `yaml:"high"`     // 监控阈值高点
 	Datetime      time.Time               `yaml:"datetime"` // 股票最新更新时间
 	Price         float64                 `yaml:"price"`    // 股票最新价格
+	LastDayPrice  float64                 `yaml:"-"`        // 股票前日价格
 	HistoryValues []analysis.HistoryValue `yaml:"-"`        // 历史价格数据
 }
 
@@ -125,7 +126,8 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
 	histories := GetHistoryValueRanges(stock)
-	historyRow := analysis.MarkValueInHistory(stock.Price, histories)
+	// TODO change isRise
+	historyRow := analysis.MarkValueInHistory(stock.Price, histories, stock.Price > stock.LastDayPrice)
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
 	if matched && histories[0].Max.Value-stock.Price > 10 {
 		stock.RetrieveMarketValue()
