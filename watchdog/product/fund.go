@@ -193,6 +193,7 @@ func (f FundFactory) SiftIn(item interface{}, verbose bool) string {
 // 查询最近一个月的连续上涨或下跌信息
 // 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
 // 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
+// TODO 在获得所有历史数据时直接计算连续信息
 func (f *Fund) QueryStreakInfo() {
 	now := utils.GetNow()
 	if f.Streak.Info != "" && utils.IsSameDay(f.Streak.UpdateDate, now) {

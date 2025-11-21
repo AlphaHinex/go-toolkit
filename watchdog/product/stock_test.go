@@ -3,6 +3,7 @@ package product
 import (
 	"encoding/json"
 	"fmt"
+	"go-toolkit/watchdog/product/analysis"
 	"strings"
 	"testing"
 )
@@ -44,12 +45,10 @@ func TestStock_RetrieveLatestPrice(t *testing.T) {
 }
 
 func TestStock_GetHistoryValueRanges(t *testing.T) {
-	s := StockFactory{}.Build("688561.SH").(*Stock)
+	s := StockFactory{}.Build("002594.SH").(*Stock)
 	ranges := GetHistoryValueRanges(s)
 	fmt.Printf("%s|%s:\n上市日期：%s\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.CreatedAt, s.MarketValue, s.Price)
-	for _, r := range ranges {
-		fmt.Printf("%s: [%.2f,%.2f]\n", r.Title, r.Min.Value, r.Max.Value)
-	}
+	fmt.Printf(analysis.MarkValueInHistory(s.Price, ranges, s.Price > s.LastDayPrice))
 }
 
 func TestSift(t *testing.T) {
