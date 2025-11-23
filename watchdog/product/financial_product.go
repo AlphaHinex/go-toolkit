@@ -1,6 +1,7 @@
 package product
 
 import (
+	"fmt"
 	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/utils"
 	"log"
@@ -63,7 +64,7 @@ type FinancialProduct interface {
 	IsTradingDay() bool
 	// IsTradable 当前是否可交易
 	IsTradable() bool
-	// QueryHistoryValues 获取历史净值/价格数据，按日期正序排列
+	// QueryHistoryValues 获取历史净值/价格数据，按日期正序排列（由远及近），同时分析近期 Streak 走势
 	QueryHistoryValues() []analysis.HistoryValue
 }
 
@@ -135,4 +136,69 @@ func queryHistoryMinMaxValues(values []analysis.HistoryValue, startDate time.Tim
 		}
 	}
 	return min, max
+}
+
+// QueryStreakInfo
+// 查询最近的连续上涨或下跌信息
+// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
+// 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
+func QueryStreakInfo(values []analysis.HistoryValue, streak *analysis.Streak) {
+	now := utils.GetNow()
+	if streak.Info != "" && utils.IsSameDay(streak.UpdateDate, now) {
+		return // 已经查询过了
+	}
+
+	riseStreak, fallStreak := 0, 0
+	valuesLen := len(values)
+	if valuesLen < 2 {
+		return // 数据不足，无法计算
+	}
+	from, to, totalMargin := 0.0, 0.0, 0.0
+	for i := valuesLen - 2; i >= 0; i-- {
+		from = values[i].Value
+		to = values[i+1].Value
+		thisMargin := (to - from) / from * 100
+		if riseStreak == 0 && fallStreak == 0 {
+			totalMargin += thisMargin
+			// 最近一天如果涨跌幅为 0，直接跳过，看前一日涨跌状态
+			if thisMargin > 0 {
+				riseStreak++
+			} else if thisMargin < 0 {
+				fallStreak++
+			}
+		} else {
+			if thisMargin > 0 {
+				if riseStreak > 0 {
+					riseStreak++
+					totalMargin += thisMargin
+				} else {
+					from = to
+					break
+				}
+			} else if thisMargin < 0 {
+				if fallStreak > 0 {
+					fallStreak++
+					totalMargin += thisMargin
+				} else {
+					from = to
+					break
+				}
+			} else if thisMargin == 0 {
+				// 中间如果有一天涨跌幅为 0，继续计算连续上涨或下跌
+				if riseStreak > 0 {
+					riseStreak++
+				} else if fallStreak > 0 {
+					fallStreak++
+				}
+			}
+		}
+	}
+	if riseStreak > 0 {
+		streak.Info = fmt.Sprintf("连续 %s 天 🔺%.2f%% %.4f ↗️ %.4f",
+			utils.TurnToEmojiNumber(riseStreak), totalMargin, from, values[valuesLen-1].Value)
+	} else if fallStreak > 0 {
+		streak.Info = fmt.Sprintf("连续 %s 天 ▼ %.2f%% %.4f ↘️ %.4f",
+			utils.TurnToEmojiNumber(fallStreak), totalMargin, from, values[valuesLen-1].Value)
+	}
+	streak.UpdateDate = now
 }

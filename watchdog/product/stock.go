@@ -15,21 +15,18 @@ import (
 )
 
 type Stock struct {
-	Code         string    `yaml:"-"`               // 股票代码，如 300750.SZ
-	Name         string    `yaml:"name"`            // 股票名称
-	CreatedAt    time.Time `yaml:"-"`               // 成立日期
-	CreatedDays  int       `yaml:"-"`               // 成立天数
-	MarketValue  float64   `yaml:"value"`           // 股票市值，单位：亿元
-	Low          float64   `yaml:"low"`             // 监控阈值低点
-	High         float64   `yaml:"high"`            // 监控阈值高点
-	Datetime     time.Time `yaml:"datetime"`        // 股票最新更新时间
-	Price        float64   `yaml:"price"`           // 股票最新价格
-	LastDayPrice float64   `yaml:"last-day-price-"` // 股票前日价格
-	Streak       struct {
-		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
-		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
-	} `yaml:"streak"` // 连续上涨或下跌信息
-	HistoryValues []analysis.HistoryValue `yaml:"-"` // 历史价格数据
+	Code          string                  `yaml:"-"`               // 股票代码，如 300750.SZ
+	Name          string                  `yaml:"name"`            // 股票名称
+	CreatedAt     time.Time               `yaml:"-"`               // 成立日期
+	CreatedDays   int                     `yaml:"-"`               // 成立天数
+	MarketValue   float64                 `yaml:"value"`           // 股票市值，单位：亿元
+	Low           float64                 `yaml:"low"`             // 监控阈值低点
+	High          float64                 `yaml:"high"`            // 监控阈值高点
+	Datetime      time.Time               `yaml:"datetime"`        // 股票最新更新时间
+	Price         float64                 `yaml:"price"`           // 股票最新价格
+	LastDayPrice  float64                 `yaml:"last-day-price-"` // 股票前日价格
+	Streak        analysis.Streak         `yaml:"streak"`          // 连续上涨或下跌信息
+	HistoryValues []analysis.HistoryValue `yaml:"-"`               // 历史价格数据
 }
 
 func (s *Stock) IsTradingDay() bool {
@@ -68,6 +65,7 @@ func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
 			Value: closed,
 		})
 	}
+	QueryStreakInfo(s.HistoryValues, &s.Streak)
 	return s.HistoryValues
 }
 
@@ -134,13 +132,15 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
 	histories := GetHistoryValueRanges(stock)
 	isRise := stock.Price > stock.LastDayPrice
-	// TODO change isRise
+	if stock.Price == stock.LastDayPrice {
+		isRise = strings.Contains(stock.Streak.Info, "🔺")
+	}
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories, isRise)
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
 	if matched && histories[0].Max.Value-stock.Price > 10 {
 		stock.RetrieveMarketValue()
-		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n",
-			stock.Code, stock.Name, stock.Price, stock.MarketValue, historyRow)
+		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n%s\n",
+			stock.Code, stock.Name, stock.Price, stock.MarketValue, stock.Streak.Info, historyRow)
 		if verbose {
 			log.Printf("Matched stock: %s", result)
 		}

@@ -42,7 +42,7 @@ func TestQueryStreakInfo(t *testing.T) {
 	f := product.Fund{
 		Code: "008099",
 	}
-	f.QueryStreakInfo()
+	f.QueryHistoryValues()
 	fmt.Print(f.Streak)
 	if f.Streak.Info == "" {
 		t.Error("Expected streak info to be non-empty")

@@ -34,13 +34,10 @@ type Fund struct {
 		Estimate string `yaml:"-"` // 实时估算净值收益率
 		Net      string `yaml:"-"` // 基金净值收益率
 	} `yaml:"-"` // 基金净值收益率
-	Ended  bool `yaml:"ended"` // 当日监测是否已结束
-	Streak struct {
-		Info       string    `yaml:"info"`        // 连续上涨或下跌信息
-		UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
-	} `yaml:"streak"` // 连续上涨或下跌信息
-	Scale         float64                 `yaml:"-"` // 基金规模（亿元）
-	HistoryValues []analysis.HistoryValue `yaml:"-"` // 历史净值数据
+	Ended         bool                    `yaml:"ended"`  // 当日监测是否已结束
+	Streak        analysis.Streak         `yaml:"streak"` // 连续上涨或下跌信息
+	Scale         float64                 `yaml:"-"`      // 基金规模（亿元）
+	HistoryValues []analysis.HistoryValue `yaml:"-"`      // 历史净值数据
 }
 
 // Estimate 实时估值结构体
@@ -93,6 +90,7 @@ func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
 			Value: value,
 		})
 	}
+	QueryStreakInfo(f.HistoryValues, &f.Streak)
 	return f.HistoryValues
 }
 
@@ -189,74 +187,6 @@ func (f FundFactory) SiftIn(item interface{}, verbose bool) string {
 	return ""
 }
 
-// QueryStreakInfo
-// 查询最近一个月的连续上涨或下跌信息
-// 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
-// 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
-// TODO 在获得所有历史数据时直接计算连续信息
-func (f *Fund) QueryStreakInfo() {
-	now := utils.GetNow()
-	if f.Streak.Info != "" && utils.IsSameDay(f.Streak.UpdateDate, now) {
-		return // 已经查询过了
-	}
-
-	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
-		url.Values{"FCODE": {f.Code}, "RANGE": {"y"}})
-	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
-		log.Printf("未获取到基金 %s 的历史净值数据，可能是基金代码错误或该基金已被清盘", f.Code)
-		return
-	}
-
-	riseStreak, fallStreak := 0, 0
-	netValueFrom, netValueTo, netValueMargin := 0.0, 0.0, 0.0
-	for i := len(res["data"].([]interface{})) - 1; i >= 0; i-- {
-		data := res["data"].([]interface{})[i]
-		margin, _ := strconv.ParseFloat(data.(map[string]interface{})["JZZZL"].(string), 64)
-		value, _ := strconv.ParseFloat(data.(map[string]interface{})["DWJZ"].(string), 64)
-		if riseStreak == 0 && fallStreak == 0 {
-			netValueMargin = margin
-			netValueFrom, netValueTo = value, value
-			// 最近一天如果涨跌幅为 0，直接跳过，看前一日涨跌状态
-			if margin > 0 {
-				riseStreak++
-			} else if margin < 0 {
-				fallStreak++
-			}
-		} else {
-			if margin > 0 {
-				if riseStreak > 0 {
-					riseStreak++
-					netValueMargin += margin
-				} else {
-					netValueFrom = value
-					break
-				}
-			} else if margin < 0 {
-				if fallStreak > 0 {
-					fallStreak++
-					netValueMargin += margin
-				} else {
-					netValueFrom = value
-					break
-				}
-			} else if margin == 0 {
-				// 中间如果有一天涨跌幅为 0，继续计算连续上涨或下跌
-				if riseStreak > 0 {
-					riseStreak++
-				} else if fallStreak > 0 {
-					fallStreak++
-				}
-			}
-		}
-	}
-	if riseStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %s 天 🔺%.2f%% %.4f ↗️ %.4f", utils.TurnToEmojiNumber(riseStreak), netValueMargin, netValueFrom, netValueTo)
-	} else if fallStreak > 0 {
-		f.Streak.Info = fmt.Sprintf("连续 %s 天 ▼ %.2f%% %.4f ↘️ %.4f", utils.TurnToEmojiNumber(fallStreak), netValueMargin, netValueFrom, netValueTo)
-	}
-	f.Streak.UpdateDate = now
-}
-
 // ComposeHistoryRow
 /**
  * 生成历史净值区间行
@@ -277,7 +207,6 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 		}
 	}
 
-	f.QueryStreakInfo()
 	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
 
 	isRise := estimateValue > f.NetValue.Value

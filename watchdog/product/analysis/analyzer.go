@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// Streak `yaml:"streak"` 连续上涨或下跌信息
+type Streak struct {
+	Info       string    `yaml:"info"`        // 连续上涨或下跌信息
+	UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
+}
+
 type HistoryValue struct {
 	Date  time.Time // 日期
 	Value float64   // 净值
