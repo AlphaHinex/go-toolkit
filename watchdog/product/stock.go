@@ -15,18 +15,18 @@ import (
 )
 
 type Stock struct {
-	Code          string                  `yaml:"-"`               // 股票代码，如 300750.SZ
-	Name          string                  `yaml:"name"`            // 股票名称
-	CreatedAt     time.Time               `yaml:"-"`               // 成立日期
-	CreatedDays   int                     `yaml:"-"`               // 成立天数
-	MarketValue   float64                 `yaml:"value"`           // 股票市值，单位：亿元
-	Low           float64                 `yaml:"low"`             // 监控阈值低点
-	High          float64                 `yaml:"high"`            // 监控阈值高点
-	Datetime      time.Time               `yaml:"datetime"`        // 股票最新更新时间
-	Price         float64                 `yaml:"price"`           // 股票最新价格
-	LastDayPrice  float64                 `yaml:"last-day-price-"` // 股票前日价格
-	Streak        analysis.Streak         `yaml:"streak"`          // 连续上涨或下跌信息
-	HistoryValues []analysis.HistoryValue `yaml:"-"`               // 历史价格数据
+	Code          string                  `yaml:"-"`              // 股票代码，如 300750.SZ
+	Name          string                  `yaml:"name"`           // 股票名称
+	CreatedAt     time.Time               `yaml:"-"`              // 成立日期
+	CreatedDays   int                     `yaml:"-"`              // 成立天数
+	MarketValue   float64                 `yaml:"value"`          // 股票市值，单位：亿元
+	Low           float64                 `yaml:"low"`            // 监控阈值低点
+	High          float64                 `yaml:"high"`           // 监控阈值高点
+	Datetime      time.Time               `yaml:"datetime"`       // 股票最新更新时间
+	Price         float64                 `yaml:"price"`          // 股票最新价格
+	LastDayPrice  float64                 `yaml:"last-day-price"` // 股票前日价格
+	Streak        analysis.Streak         `yaml:"streak"`         // 连续上涨或下跌信息
+	HistoryValues []analysis.HistoryValue `yaml:"-"`              // 历史价格数据
 }
 
 func (s *Stock) IsTradingDay() bool {
