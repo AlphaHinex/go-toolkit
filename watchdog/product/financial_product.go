@@ -124,7 +124,7 @@ func queryHistoryMinMaxValues(values []analysis.HistoryValue, startDate time.Tim
 		Value: math.MinInt16,
 		Date:  utils.GetNow(),
 	}
-	if !startDate.Equal(utils.EarliestTime()) && startDate.Before(values[len(values)-1].Date) {
+	if len(values) == 0 || !startDate.Equal(utils.EarliestTime()) && startDate.Before(values[len(values)-1].Date) {
 		return min, max
 	}
 	for _, value := range values {

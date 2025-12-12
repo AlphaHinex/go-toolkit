@@ -24,7 +24,7 @@ func TestStockFactory_GetAllCodes(t *testing.T) {
 }
 
 func TestStockFactory_Build(t *testing.T) {
-	s := StockFactory{}.Build("002594.SH").(*Stock)
+	s := StockFactory{}.Build("002594.SZ").(*Stock)
 	content, _ := json.Marshal(s)
 	fmt.Println(string(content))
 	//if s.MarketValue == 0 || s.Price == 0 {
@@ -50,6 +50,15 @@ func TestStock_GetHistoryValueRanges(t *testing.T) {
 	fmt.Printf("%s|%s:\n上市日期：%s\n市值：%.2f 亿\n最新成交价：%.2f\n", s.Code, s.Name, s.CreatedAt, s.MarketValue, s.Price)
 	fmt.Println(s.Streak.Info)
 	fmt.Printf(analysis.MarkValueInHistory(s.Price, ranges, s.Price > s.LastDayPrice))
+}
+
+func TestStockFactory_SiftIn(t *testing.T) {
+	s := StockFactory{}.Build("688765.SH").(*Stock)
+	result := StockFactory{}.SiftIn(s, true)
+	if result == "" {
+		t.Error("Expected sift in result to be non-empty")
+	}
+	fmt.Println(result)
 }
 
 func TestSift(t *testing.T) {
