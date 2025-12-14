@@ -108,22 +108,22 @@ func main() {
 
 			stocksMap := configs.Stocks
 			var stocks []*product.Stock
-			for key, s := range stocksMap {
-				if s.Low == 0 || s.High == 0 {
+			for key, persistedStock := range stocksMap {
+				if persistedStock.Low == 0 || persistedStock.High == 0 {
 					log.Printf("股票 %s 未设置低点和高点，跳过监控\n", key)
 					continue
 				}
-				lastPrice := s.Price
+				lastPrice := persistedStock.Price
 				stock := product.StockFactory{}.Build(key).(*product.Stock)
-				stock.Low = s.Low
-				stock.High = s.High
+				stock.Low = persistedStock.Low
+				stock.High = persistedStock.High
 				// 股票价格监视不关心监视时间点，只要开盘中超过阈值及上分钟值，每分钟都可发消息
 				if product.ShouldShowAll(stock) ||
 					(stock.IsTradable() &&
 						((stock.Price < stock.Low && stock.Price < lastPrice) ||
 							(stock.Price > stock.High && stock.Price > lastPrice))) {
-					if s.Streak.Info == "" && !utils.IsSameDay(s.Streak.UpdateDate, utils.GetNow()) {
-						s.QueryHistoryValues()
+					if persistedStock.Streak.Info == "" && !utils.IsSameDay(persistedStock.Streak.UpdateDate, utils.GetNow()) {
+						stock.QueryHistoryValues()
 					}
 					stocks = append(stocks, stock)
 				}
