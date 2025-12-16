@@ -188,11 +188,15 @@ func (s *Stock) RetrieveMarketValue() {
 // PrettyPrint
 // 美化输出，示例如下：
 // 510210|上证指数ETF
+// 连续 1️⃣ 天 🔺7.14% 47.3100 ↗️ 50.6900
 // 1.20 🔺1.00
 // or
 // 0.69 ▼ 0.70
 func (s *Stock) PrettyPrint() string {
 	row := fmt.Sprintf("%s|%s\n", s.Code, s.Name)
+	if s.Streak.Info != "" {
+		row += fmt.Sprintf("%s\n", s.Streak.Info)
+	}
 	if s.Price > s.High {
 		row += fmt.Sprintf("%.4f 🔺%.4f\n", s.Price, s.High)
 	} else if s.Price < s.Low {
