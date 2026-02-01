@@ -207,7 +207,7 @@ func (f *Fund) ComposeHistoryRow(markValue float64) string {
 		}
 	}
 
-	historyRow := fmt.Sprintf("%s\n历史净值：\n", f.Streak.Info)
+	historyRow := fmt.Sprintf("%s\n%s\n历史净值：\n", f.Streak.Trend, f.Streak.Info)
 
 	isRise := estimateValue > f.NetValue.Value
 	if estimateValue == 0 {

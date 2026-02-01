@@ -9,6 +9,7 @@ import (
 type Streak struct {
 	Info       string    `yaml:"info"`        // 连续上涨或下跌信息
 	UpdateDate time.Time `yaml:"update-date"` // streak 信息的最后更新日期
+	Trend      string    `yaml:"trend"`       // 趋势，用📈📉表示的最近 12 个交易日的涨跌状态
 }
 
 type HistoryValue struct {

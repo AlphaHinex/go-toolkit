@@ -11,8 +11,8 @@ import (
 func TestStockFactory_GetAllCodes(t *testing.T) {
 	codes := StockFactory{}.GetAllCodes()
 	println("total stocks: ", len(codes))
-	if len(codes) != 5168 {
-		t.Errorf("expected 5160=>5164=>5168 stocks, got %d", len(codes))
+	if len(codes) != 5186 {
+		t.Errorf("expected 5160=>5164=>5168=>5186 stocks, got %d", len(codes))
 	}
 	for _, c := range codes {
 		if strings.HasSuffix(c, ".SZ") || strings.HasSuffix(c, ".SH") {
@@ -53,7 +53,7 @@ func TestStock_GetHistoryValueRanges(t *testing.T) {
 }
 
 func TestStockFactory_SiftIn(t *testing.T) {
-	s := StockFactory{}.Build("688765.SH").(*Stock)
+	s := StockFactory{}.Build("600036.SH").(*Stock)
 	result := StockFactory{}.SiftIn(s, true)
 	if result == "" {
 		t.Error("Expected sift in result to be non-empty")

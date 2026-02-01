@@ -6,6 +6,7 @@ import (
 	"go-toolkit/watchdog/utils"
 	"log"
 	"math"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -141,67 +142,74 @@ func queryHistoryMinMaxValues(values []analysis.HistoryValue, startDate time.Tim
 	return min, max
 }
 
-// QueryStreakInfo
-// 查询最近的连续上涨或下跌信息
+// TrendDuring Trend 最大日期范围天数
+var TrendDuring = 12
+
+// QueryStreakInfo 查询最近的连续上涨或下跌信息，将查询得到信息填入 Streak 对应属性中，例如：
+// Streak.Trend:
+// 📈📈📉📉📉📉－📉📈📈📉📉📉
+// Streak.Info:
 // 连续 3️⃣ 天 🔺2.05% 1.4818 ↗️ 1.5752
+// 或
 // 连续 1️⃣2️⃣ 天 ▼ 2.05% 1.5752 ↘️ 1.4818
-func QueryStreakInfo(values []analysis.HistoryValue, streak *analysis.Streak) {
+// 等
+// Streak.UpdateDate: 更新为当前时间
+// 入参：
+// valuesFromOldToNew 历史净值/价格数据，按日期正序排列（由远及近）
+func QueryStreakInfo(valuesFromOldToNew []analysis.HistoryValue, streak *analysis.Streak) {
 	now := utils.GetNow()
 	if streak.Info != "" && utils.IsSameDay(streak.UpdateDate, now) {
-		return // 已经查询过了
+		return // 当天已经查询过了
 	}
 
-	riseStreak, fallStreak := 0, 0
-	valuesLen := len(values)
+	valuesLen := len(valuesFromOldToNew)
 	if valuesLen < 2 {
 		return // 数据不足，无法计算
 	}
-	from, to, totalMargin := 0.0, 0.0, 0.0
-	for i := valuesLen - 2; i >= 0; i-- {
-		from = values[i].Value
-		to = values[i+1].Value
-		thisMargin := (to - from) / from * 100
-		if riseStreak == 0 && fallStreak == 0 {
-			totalMargin += thisMargin
-			// 最近一天如果涨跌幅为 0，直接跳过，看前一日涨跌状态
-			if thisMargin > 0 {
-				riseStreak++
-			} else if thisMargin < 0 {
-				fallStreak++
-			}
+	// 从多少钱涨跌到多少钱
+	from, to := 0.0, 0.0
+	streak.Trend = ""
+	for i := valuesLen - 2; i >= max(valuesLen-TrendDuring-1, 0); i-- {
+		from = valuesFromOldToNew[i].Value
+		to = valuesFromOldToNew[i+1].Value
+		if from == to {
+			streak.Trend = "－" + streak.Trend
+		} else if from > to {
+			streak.Trend = "📉" + streak.Trend
 		} else {
-			if thisMargin > 0 {
-				if riseStreak > 0 {
-					riseStreak++
-					totalMargin += thisMargin
-				} else {
-					from = to
-					break
-				}
-			} else if thisMargin < 0 {
-				if fallStreak > 0 {
-					fallStreak++
-					totalMargin += thisMargin
-				} else {
-					from = to
-					break
-				}
-			} else if thisMargin == 0 {
-				// 中间如果有一天涨跌幅为 0，继续计算连续上涨或下跌
-				if riseStreak > 0 {
-					riseStreak++
-				} else if fallStreak > 0 {
-					fallStreak++
-				}
-			}
+			streak.Trend = "📈" + streak.Trend
 		}
 	}
-	if riseStreak > 0 {
-		streak.Info = fmt.Sprintf("连续 %s 天 🔺%.2f%% %.4f ↗️ %.4f",
-			utils.TurnToEmojiNumber(riseStreak), totalMargin, from, values[valuesLen-1].Value)
-	} else if fallStreak > 0 {
-		streak.Info = fmt.Sprintf("连续 %s 天 ▼ %.2f%% %.4f ↘️ %.4f",
-			utils.TurnToEmojiNumber(fallStreak), totalMargin, from, values[valuesLen-1].Value)
+
+	raisePattern := regexp.MustCompile(`[📈－]+$`)
+	fallPattern := regexp.MustCompile(`[📉－]+$`)
+
+	matches := raisePattern.FindString(streak.Trend)
+	if matches == "" {
+		matches = fallPattern.FindString(streak.Trend)
 	}
+	lastIdx := len([]rune(matches))
+	if lastIdx == 0 {
+		return // 最近没有连续涨跌
+	}
+
+	from = valuesFromOldToNew[valuesLen-lastIdx-1].Value
+	to = valuesFromOldToNew[valuesLen-1].Value
+	// 涨跌幅百分比是多少
+	totalMargin := (to - from) / from * 100
+	marks := []string{"🔺", "↗️"}
+	if totalMargin < 0 {
+		marks = []string{"▼ ", "↘️"}
+	}
+
+	streak.Info = fmt.Sprintf("连续 %s 天 %s%.2f%% %.4f %s %.4f",
+		utils.TurnToEmojiNumber(lastIdx), marks[0], totalMargin, from, marks[1], to)
 	streak.UpdateDate = now
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

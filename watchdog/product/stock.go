@@ -194,6 +194,9 @@ func (s *Stock) RetrieveMarketValue() {
 // 0.69 ▼ 0.70
 func (s *Stock) PrettyPrint() string {
 	row := fmt.Sprintf("%s|%s\n", s.Code, s.Name)
+	if s.Streak.Trend != "" {
+		row += fmt.Sprintf("%s\n", s.Streak.Trend)
+	}
 	if s.Streak.Info != "" {
 		row += fmt.Sprintf("%s\n", s.Streak.Info)
 	}
