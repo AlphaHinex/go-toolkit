@@ -131,6 +131,7 @@ func main() {
 				persistedStock.Price = stock.Price
 				persistedStock.LastDayPrice = stock.LastDayPrice
 				persistedStock.Datetime = stock.Datetime
+				persistedStock.Streak = stock.Streak
 			}
 
 			var message strings.Builder
