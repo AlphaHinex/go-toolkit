@@ -127,6 +127,10 @@ func main() {
 					}
 					stocks = append(stocks, stock)
 				}
+				// 持久化股票最新信息
+				persistedStock.Price = stock.Price
+				persistedStock.LastDayPrice = stock.LastDayPrice
+				persistedStock.Datetime = stock.Datetime
 			}
 
 			var message strings.Builder
