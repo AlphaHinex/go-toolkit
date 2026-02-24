@@ -22,7 +22,7 @@ func TurnToEmojiNumber(num int) string {
 }
 
 // UpOrDown
-// 添加涨跌符号
+// 在输入的字符串前面，添加涨跌符号。输入字符串需表示数值，数值为正添加 "🔺"，数值为负添加 "▼"
 func UpOrDown(value string) string {
 	v, _ := strconv.ParseFloat(value, 64)
 	if v > 0 {

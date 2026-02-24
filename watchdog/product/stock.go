@@ -139,8 +139,8 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
 	if matched && histories[0].Max.Value-stock.Price > 10 {
 		stock.RetrieveMarketValue()
-		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n%s\n",
-			stock.Code, stock.Name, stock.Price, stock.MarketValue, stock.Streak.Info, historyRow)
+		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n%s\n%s\n",
+			stock.Code, stock.Name, stock.Price, stock.MarketValue, stock.Streak.Trend, stock.Streak.Info, historyRow)
 		if verbose {
 			log.Printf("Matched stock: %s", result)
 		}
