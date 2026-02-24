@@ -203,12 +203,7 @@ func (s *Stock) PrettyPrint() string {
 	if s.Streak.Info != "" {
 		row += fmt.Sprintf("%s\n", s.Streak.Info)
 	}
-	upOrDownMark := ""
-	if s.Price > s.LastDayPrice {
-		upOrDownMark = "📈"
-	} else if s.Price < s.LastDayPrice {
-		upOrDownMark = "📉"
-	}
+	upOrDownMark := utils.UpOrDownEmoji(s.LastDayPrice, s.Price)
 	if s.Price > s.High {
 		row += fmt.Sprintf("%s%.4f 🔺(%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	} else if s.Price < s.Low {

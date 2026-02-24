@@ -33,3 +33,15 @@ func UpOrDown(value string) string {
 	}
 	return fmt.Sprintf("▼ %.2f%%", v)
 }
+
+// UpOrDownEmoji
+// 根据当前值与之前值的比较，返回对应的涨跌表情符号。当前值大于之前值返回 "📈"，当前值小于之前值返回 "📉"，否则返回空字符串。
+func UpOrDownEmoji(before, current float64) string {
+	upOrDownMark := ""
+	if current > before {
+		upOrDownMark = "📈"
+	} else if current < before {
+		upOrDownMark = "📉"
+	}
+	return upOrDownMark
+}
