@@ -187,11 +187,14 @@ func (s *Stock) RetrieveMarketValue() {
 
 // PrettyPrint
 // 美化输出，示例如下：
-// 510210|上证指数ETF
-// 连续 1️⃣ 天 🔺7.14% 47.3100 ↗️ 50.6900
-// 1.20 🔺1.00
+// 600036.SH|招商银行
+// 📈📈📉📉📈📈📉📉📉📈📉📉
+// 连续 2️⃣ 天 ▼ -1.75% 39.4000 ↘️ 38.7100
+// 📈39.3300 🔺(38.2000 ~ 39.2400)
 // or
-// 0.69 ▼ 0.70
+// 📉37.7500 (37.0000 ~ 40.0500)
+// or
+// 📉36.7500 ▼ (37.0000 ~ 40.0500)
 func (s *Stock) PrettyPrint() string {
 	row := fmt.Sprintf("%s|%s\n", s.Code, s.Name)
 	if s.Streak.Trend != "" {
@@ -200,12 +203,18 @@ func (s *Stock) PrettyPrint() string {
 	if s.Streak.Info != "" {
 		row += fmt.Sprintf("%s\n", s.Streak.Info)
 	}
+	upOrDownMark := ""
+	if s.Price > s.LastDayPrice {
+		upOrDownMark = "📈"
+	} else if s.Price < s.LastDayPrice {
+		upOrDownMark = "📉"
+	}
 	if s.Price > s.High {
-		row += fmt.Sprintf("%.4f 🔺%.4f\n", s.Price, s.High)
+		row += fmt.Sprintf("%s%.4f 🔺(%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	} else if s.Price < s.Low {
-		row += fmt.Sprintf("%.4f ▼ %.4f\n", s.Price, s.Low)
+		row += fmt.Sprintf("%s%.4f ▼ (%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	} else {
-		row += fmt.Sprintf("%.4f (%.4f ~ %.4f)\n", s.Price, s.Low, s.High)
+		row += fmt.Sprintf("%s%.4f (%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	}
 	return row + "\n"
 }
