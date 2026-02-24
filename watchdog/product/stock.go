@@ -136,8 +136,35 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 		isRise = strings.Contains(stock.Streak.Info, "🔺")
 	}
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories, isRise)
-	matched, _ := regexp.MatchString(`(?s).*[^度]：[^\n]+◀️\n`, historyRow)
-	if matched && histories[0].Max.Value-stock.Price > 10 {
+
+	// 筛选条件1：突破历史高点
+	breakHistoryHigh := false
+	if len(histories) > 0 && stock.Price >= histories[len(histories)-1].Max.Value {
+		breakHistoryHigh = true
+	}
+
+	// 筛选条件2：连续下跌后开始上涨
+	// 筛选条件3：连续上涨
+	continuousRise := false
+	continuousFallThenRise := false
+
+	// 分析趋势
+	if stock.Streak.Trend != "" {
+		// 检查是否连续上涨（忽略中间的横盘）
+		risePattern := regexp.MustCompile(`[📈－]+$`)
+		if match := risePattern.FindString(stock.Streak.Trend); len(match) >= 3 {
+			continuousRise = true
+		}
+
+		// 检查是否连续下跌后开始上涨
+		fallRisePattern := regexp.MustCompile(`[📉]+[📈]+$`)
+		if match := fallRisePattern.FindString(stock.Streak.Trend); len(match) >= 3 {
+			continuousFallThenRise = true
+		}
+	}
+
+	// 满足任一筛选条件
+	if breakHistoryHigh || continuousRise || continuousFallThenRise {
 		stock.RetrieveMarketValue()
 		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n%s\n%s\n",
 			stock.Code, stock.Name, stock.Price, stock.MarketValue, stock.Streak.Trend, stock.Streak.Info, historyRow)
