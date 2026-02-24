@@ -275,7 +275,7 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 	// 净值 净值涨跌幅 累计收益 净值日期/时间
 	netRow = fmt.Sprintf("净值：%.4f %s %s%s\n",
 		f.NetValue.Value,
-		utils.UpOrDown(fmt.Sprint(f.NetValue.Margin)),
+		utils.PrefixUpOrDown(fmt.Sprint(f.NetValue.Margin)),
 		netProfit,
 		netValueDateStr)
 
@@ -295,7 +295,7 @@ func (f *Fund) PrettyPrint(showAll bool) string {
 		// 估值 估值涨跌幅 估值收益率 估值时间
 		estimateRow = fmt.Sprintf("估值：%s %s %s%s\n",
 			f.Estimate.Value,
-			utils.UpOrDown(f.Estimate.Margin),
+			utils.PrefixUpOrDown(f.Estimate.Margin),
 			estimateProfit,
 			strings.Split(f.Estimate.Datetime, " ")[1])
 	}

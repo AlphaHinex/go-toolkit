@@ -152,13 +152,13 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	if stock.Streak.Trend != "" {
 		// 检查是否连续上涨（忽略中间的横盘）
 		risePattern := regexp.MustCompile(`[📈－]+$`)
-		if match := risePattern.FindString(stock.Streak.Trend); len(match) >= 3 {
+		if match := risePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 3 {
 			continuousRise = true
 		}
 
 		// 检查是否连续下跌后开始上涨
 		fallRisePattern := regexp.MustCompile(`[📉]+[📈]+$`)
-		if match := fallRisePattern.FindString(stock.Streak.Trend); len(match) >= 3 {
+		if match := fallRisePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 3 {
 			continuousFallThenRise = true
 		}
 	}
