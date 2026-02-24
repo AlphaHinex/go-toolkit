@@ -157,8 +157,8 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 		}
 
 		// 检查是否连续下跌后开始上涨
-		fallRisePattern := regexp.MustCompile(`[📉]+[📈]+$`)
-		if match := fallRisePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 3 {
+		fallRisePattern := regexp.MustCompile(`[📉]{2,}[📈]{2,}$`)
+		if match := fallRisePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 4 {
 			continuousFallThenRise = true
 		}
 	}
