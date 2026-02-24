@@ -75,7 +75,7 @@ func HttpsGet(url string) []byte {
 func DoRequestWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
-	var maxRetries, retryDelay = 3, 2 * time.Second
+	var maxRetries, retryDelay = 5, 3 * time.Second
 
 	// 1. 创建自定义Transport（支持HTTPS）
 	tr := &http.Transport{

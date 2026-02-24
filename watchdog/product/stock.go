@@ -99,7 +99,7 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 		if fmt.Sprintf("%T", jsonObj["total"]) == "float64" {
 			days, _ = jsonObj["total"].(int)
 		} else {
-			log.Printf("Invalid type for 'total': expected string, got %T %v", jsonObj["total"], jsonObj["total"])
+			log.Printf("Invalid type for 'total': expected string, got %T %v\n jsonObj: %v", jsonObj["total"], jsonObj["total"], jsonObj)
 		}
 	} else {
 		days, _ = strconv.Atoi(totalValue)
@@ -166,8 +166,13 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	// 满足任一筛选条件
 	if breakHistoryHigh || continuousRise || continuousFallThenRise {
 		stock.RetrieveMarketValue()
-		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n%s\n%s\n%s\n",
-			stock.Code, stock.Name, stock.Price, stock.MarketValue, stock.Streak.Trend, stock.Streak.Info, historyRow)
+		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
+			stock.Code, stock.Name,
+			stock.Price, stock.MarketValue,
+			breakHistoryHigh, continuousRise, continuousFallThenRise,
+			stock.Streak.Trend,
+			stock.Streak.Info,
+			historyRow)
 		if verbose {
 			log.Printf("Matched stock: %s", result)
 		}
