@@ -195,6 +195,10 @@ func (s *Stock) RetrieveLatestPrice() {
 		data := result["data"].(map[string]interface{})
 		s.Name = data["name"].(string)
 		trends := data["trends"].([]interface{})
+		if len(trends) == 0 {
+			log.Printf("No trend data found for stock %s\n", s.Code)
+			return
+		}
 		lastRow := strings.Split(trends[len(trends)-1].(string), ",")
 		s.Price, _ = strconv.ParseFloat(lastRow[1], 64)
 		now := utils.GetNow()
