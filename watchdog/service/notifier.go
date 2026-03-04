@@ -16,6 +16,11 @@ func Notify(configs *Config, msg string) {
 	if configs.Token.Lark == "" && configs.Token.DingTalk == "" {
 		log.Println(msg)
 	}
+	msgs := strings.Split(msg, "\n\n")
+	if len(msgs) > 20 {
+		msg = strings.Join(msgs[:20], "\n\n")
+		msg += "..."
+	}
 	if configs.Token.Lark != "" {
 		sendToLark(configs.Token.Lark, msg)
 	}

@@ -164,7 +164,7 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	}
 
 	// 满足任一筛选条件
-	if breakHistoryHigh || continuousRise || continuousFallThenRise {
+	if (breakHistoryHigh || continuousRise || continuousFallThenRise) && stock.Price > 5 && stock.Price < 70 {
 		stock.RetrieveMarketValue()
 		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
 			stock.Code, stock.Name,
