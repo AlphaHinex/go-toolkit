@@ -12,6 +12,7 @@ Watchdog
 - 对波动幅度超过阈值的基金给出历史净值信息
 - 监控结果信息支持控制台输出和飞书、钉钉机器人通知
 - 每日净值更新后自动输出结果或发送通知
+- `--sift` 股票初筛结果会保存到本地 CSV，再由大模型复筛每类 Top3 后发送飞书
 
 用法
 ----
@@ -37,7 +38,25 @@ funds:
 token:
   lark: xxxxxx # 飞书机器人 Webhook token，可选
   dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选
+
+sift-ai:
+  endpoint: https://api.openai.com
+  model: gpt-4o-mini
+  output-dir: ./sift-results
 ```
+
+执行 `--sift` 前需设置：
+
+```bash
+export OPENAI_API_KEY=sk-xxxx
+```
+
+`--sift` 新流程：
+
+1. 股票全市场初筛
+2. 初筛结果落盘 CSV（默认 `./sift-results/stocks_initial_YYYYMMDD_HHMMSS.csv`）
+3. 调用 OpenAI Chat Completions 对初筛结果复筛，每类（破高/连涨/止跌反弹）选 3 只
+4. 按类型分组、组内按投资分数降序发送飞书消息
 
 输出内容样例：
 
