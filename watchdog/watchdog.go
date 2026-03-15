@@ -91,7 +91,18 @@ func main() {
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
-				service.Notify(configs, product.Sift(&product.StockFactory{}, verbose))
+				stockCandidates := product.SiftStocks(verbose)
+				csvFilePath, err := service.SaveStockSiftCandidatesAsCSV(stockCandidates)
+				if err != nil {
+					log.Printf("保存股票初筛 CSV 失败: %v", err)
+				} else {
+					log.Printf("股票初筛结果已保存到: %s", csvFilePath)
+				}
+
+				stockMsg := service.BuildStockSiftNotification(configs, stockCandidates, csvFilePath)
+				if strings.TrimSpace(stockMsg) != "" {
+					service.Notify(configs, stockMsg)
+				}
 				service.Notify(configs, product.Sift(&product.FundFactory{}, verbose))
 				return nil
 			}
