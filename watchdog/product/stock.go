@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,6 +28,43 @@ type Stock struct {
 	LastDayPrice  float64                 `yaml:"last-day-price"` // 股票前日价格
 	Streak        analysis.Streak         `yaml:"streak"`         // 连续上涨或下跌信息
 	HistoryValues []analysis.HistoryValue `yaml:"-"`              // 历史价格数据
+}
+
+type StockSiftCandidate struct {
+	Code                   string
+	Name                   string
+	Price                  float64
+	MarketValue            float64
+	BreakHistoryHigh       bool
+	ContinuousRise         bool
+	ContinuousFallThenRise bool
+	Trend                  string
+	StreakInfo             string
+	HistoryRow             string
+}
+
+func (c StockSiftCandidate) TypeLabels() []string {
+	labels := make([]string, 0, 3)
+	if c.BreakHistoryHigh {
+		labels = append(labels, "突破历史高点")
+	}
+	if c.ContinuousRise {
+		labels = append(labels, "连续上涨")
+	}
+	if c.ContinuousFallThenRise {
+		labels = append(labels, "连续下跌后反弹")
+	}
+	return labels
+}
+
+func (c StockSiftCandidate) PrettyPrint() string {
+	return fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
+		c.Code, c.Name,
+		c.Price, c.MarketValue,
+		c.BreakHistoryHigh, c.ContinuousRise, c.ContinuousFallThenRise,
+		c.Trend,
+		c.StreakInfo,
+		c.HistoryRow)
 }
 
 func (s *Stock) IsTradingDay() bool {
@@ -130,6 +168,54 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	stock := item.(*Stock)
+	candidate := buildStockSiftCandidate(stock)
+	if candidate == nil {
+		return ""
+	}
+	if verbose {
+		log.Printf("Matched stock: %s", candidate.PrettyPrint())
+	}
+	return candidate.PrettyPrint()
+}
+
+func SiftStocks(verbose bool) []StockSiftCandidate {
+	factory := StockFactory{}
+	codes := factory.GetAllCodes()
+
+	results := make([]StockSiftCandidate, 0)
+	var mu sync.Mutex
+	wg := &sync.WaitGroup{}
+	concurrencyLimit := 8
+	sem := make(chan struct{}, concurrencyLimit)
+
+	for _, code := range codes {
+		wg.Add(1)
+		go func(code string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if verbose {
+				log.Printf("Processing stock code: %s", code)
+			}
+			stock := factory.Build(code).(*Stock)
+			candidate := buildStockSiftCandidate(stock)
+			if candidate != nil {
+				mu.Lock()
+				results = append(results, *candidate)
+				mu.Unlock()
+			}
+			if verbose {
+				log.Printf("Finished stock code: %s", code)
+			}
+		}(code)
+	}
+
+	wg.Wait()
+	return results
+}
+
+func buildStockSiftCandidate(stock *Stock) *StockSiftCandidate {
 	histories := GetHistoryValueRanges(stock)
 	isRise := stock.Price > stock.LastDayPrice
 	if stock.Price == stock.LastDayPrice {
@@ -166,19 +252,20 @@ func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
 	// 满足任一筛选条件
 	if (breakHistoryHigh || continuousRise || continuousFallThenRise) && stock.Price > 5 && stock.Price < 70 {
 		stock.RetrieveMarketValue()
-		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
-			stock.Code, stock.Name,
-			stock.Price, stock.MarketValue,
-			breakHistoryHigh, continuousRise, continuousFallThenRise,
-			stock.Streak.Trend,
-			stock.Streak.Info,
-			historyRow)
-		if verbose {
-			log.Printf("Matched stock: %s", result)
+		return &StockSiftCandidate{
+			Code:                   stock.Code,
+			Name:                   stock.Name,
+			Price:                  stock.Price,
+			MarketValue:            stock.MarketValue,
+			BreakHistoryHigh:       breakHistoryHigh,
+			ContinuousRise:         continuousRise,
+			ContinuousFallThenRise: continuousFallThenRise,
+			Trend:                  stock.Streak.Trend,
+			StreakInfo:             stock.Streak.Info,
+			HistoryRow:             historyRow,
 		}
-		return result
 	}
-	return ""
+	return nil
 }
 
 func (s *Stock) RetrieveLatestPrice() {

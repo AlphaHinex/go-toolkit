@@ -15,6 +15,12 @@ type Config struct {
 		Lark     string `yaml:"lark"`
 		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
+	OpenAI struct {
+		Endpoint string  `yaml:"endpoint"`
+		ApiKey   string  `yaml:"api-key"`
+		Model    string  `yaml:"model"`
+		Temp     float64 `yaml:"temperature"`
+	} `yaml:"openai"`
 }
 
 var ConfigTemplate = fmt.Sprintf(`
@@ -31,7 +37,13 @@ stocks:
 
 token:
   lark: xxxxxx # 飞书机器人 Webhook token，可选
-  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选`)
+	dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选
+
+openai:
+	endpoint: https://api.openai.com # OpenAI 兼容接口地址
+	api-key: sk-xxxxxxxx
+	model: gpt-4o-mini
+	temperature: 0.2 # 可选，默认 0.2`)
 
 func ReadConfigs(configsFilePath string) *Config {
 	content, err := os.ReadFile(configsFilePath)
