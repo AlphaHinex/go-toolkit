@@ -11,11 +11,22 @@ import (
 type Config struct {
 	Funds  map[string]*product.Fund  `yaml:"funds"`
 	Stocks map[string]*product.Stock `yaml:"stocks"`
-	Token  struct {
+	SiftAI struct {
+		Endpoint  string `yaml:"endpoint"`
+		Model     string `yaml:"model"`
+		OutputDir string `yaml:"output-dir"`
+	} `yaml:"sift-ai"`
+	Token struct {
 		Lark     string `yaml:"lark"`
 		DingTalk string `yaml:"dingtalk"`
 	} `yaml:"token"`
 }
+
+const (
+	DefaultSiftAIEndpoint  = "https://api.openai.com"
+	DefaultSiftAIModel     = "gpt-4o-mini"
+	DefaultSiftAIOutputDir = "./sift-results"
+)
 
 var ConfigTemplate = fmt.Sprintf(`
 funds:
@@ -31,7 +42,12 @@ stocks:
 
 token:
   lark: xxxxxx # 飞书机器人 Webhook token，可选
-  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选`)
+  dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选
+
+sift-ai:
+  endpoint: https://api.openai.com
+  model: gpt-4o-mini
+  output-dir: ./sift-results`)
 
 func ReadConfigs(configsFilePath string) *Config {
 	content, err := os.ReadFile(configsFilePath)
@@ -43,7 +59,20 @@ func ReadConfigs(configsFilePath string) *Config {
 	if err != nil {
 		log.Panicf("解析配置失败: %v", err)
 	}
+	fillSiftAIDefaults(&config)
 	return &config
+}
+
+func fillSiftAIDefaults(config *Config) {
+	if config.SiftAI.Endpoint == "" {
+		config.SiftAI.Endpoint = DefaultSiftAIEndpoint
+	}
+	if config.SiftAI.Model == "" {
+		config.SiftAI.Model = DefaultSiftAIModel
+	}
+	if config.SiftAI.OutputDir == "" {
+		config.SiftAI.OutputDir = DefaultSiftAIOutputDir
+	}
 }
 
 func WriteConfigs(configFilePath string, configs *Config) {

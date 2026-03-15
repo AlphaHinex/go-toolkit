@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"go-toolkit/watchdog/product"
@@ -91,7 +92,9 @@ func main() {
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
-				service.Notify(configs, product.Sift(&product.StockFactory{}, verbose))
+				if err := runStockSiftPipeline(configs); err != nil {
+					return err
+				}
 				service.Notify(configs, product.Sift(&product.FundFactory{}, verbose))
 				return nil
 			}
@@ -158,6 +161,30 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runStockSiftPipeline(configs *service.Config) error {
+	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	if apiKey == "" {
+		return errors.New("执行 --sift 需要设置环境变量 OPENAI_API_KEY")
+	}
+	candidates := product.SiftStocks(&product.StockFactory{}, verbose)
+	if len(candidates) == 0 {
+		service.Notify(configs, "股票初筛结果为空")
+		return nil
+	}
+	csvPath, err := service.SaveStockInitialSiftCSV(configs.SiftAI.OutputDir, candidates)
+	if err != nil {
+		return err
+	}
+	log.Printf("股票初筛结果已保存: %s", csvPath)
+	rankResult, fallback, rankErr := service.RankStocks(configs, apiKey, candidates)
+	if rankErr != nil {
+		log.Printf("OpenAI 复筛失败，已启用本地兜底策略: %v", rankErr)
+	}
+	message := service.BuildStockSiftMessage(rankResult, csvPath, fallback)
+	service.Notify(configs, message)
+	return nil
 }
 
 func watchFund(fund *product.Fund) {

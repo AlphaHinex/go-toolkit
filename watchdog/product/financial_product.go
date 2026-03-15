@@ -60,6 +60,40 @@ func Sift(factory Factory, verbose bool) string {
 	}
 }
 
+func SiftStocks(factory *StockFactory, verbose bool) []StockSiftCandidate {
+	codes := factory.GetAllCodes()
+	var (
+		result []StockSiftCandidate
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+	)
+	concurrencyLimit := 8
+	sem := make(chan struct{}, concurrencyLimit)
+	for _, code := range codes {
+		wg.Add(1)
+		go func(code string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if verbose {
+				log.Printf("Processing stock code: %s\n", code)
+			}
+			item := factory.Build(code)
+			candidate := factory.SiftCandidate(item, verbose)
+			if candidate != nil {
+				mu.Lock()
+				result = append(result, *candidate)
+				mu.Unlock()
+			}
+			if verbose {
+				log.Printf("Finished processing stock code: %s\n", code)
+			}
+		}(code)
+	}
+	wg.Wait()
+	return result
+}
+
 type FinancialProduct interface {
 	// IsTradingDay 当天是否是交易日
 	IsTradingDay() bool

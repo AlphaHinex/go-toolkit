@@ -29,6 +29,26 @@ type Stock struct {
 	HistoryValues []analysis.HistoryValue `yaml:"-"`              // 历史价格数据
 }
 
+type StockSiftCandidate struct {
+	Code             string
+	Name             string
+	Price            float64
+	MarketValue      float64
+	BreakHistoryHigh bool
+	ContinuousRise   bool
+	FallThenRise     bool
+	Trend            string
+	StreakInfo       string
+	HistoryRow       string
+	Types            []string
+}
+
+type stockSignalFlags struct {
+	breakHistoryHigh bool
+	continuousRise   bool
+	fallThenRise     bool
+}
+
 func (s *Stock) IsTradingDay() bool {
 	now := utils.GetNow()
 	return utils.IsSameDay(s.Datetime, now)
@@ -129,56 +149,89 @@ func (s StockFactory) Build(stockCode string) FinancialProduct {
 }
 
 func (s StockFactory) SiftIn(item interface{}, verbose bool) string {
+	candidate := s.SiftCandidate(item, verbose)
+	if candidate == nil {
+		return ""
+	}
+	result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
+		candidate.Code, candidate.Name,
+		candidate.Price, candidate.MarketValue,
+		candidate.BreakHistoryHigh, candidate.ContinuousRise, candidate.FallThenRise,
+		candidate.Trend,
+		candidate.StreakInfo,
+		candidate.HistoryRow)
+	if verbose {
+		log.Printf("Matched stock: %s", result)
+	}
+	return result
+}
+
+func (s StockFactory) SiftCandidate(item interface{}, verbose bool) *StockSiftCandidate {
 	stock := item.(*Stock)
+	historyRow, signals := evaluateStockSignals(stock)
+	if !passesStockSift(signals, stock.Price) {
+		return nil
+	}
+	stock.RetrieveMarketValue()
+	candidate := &StockSiftCandidate{
+		Code:             stock.Code,
+		Name:             stock.Name,
+		Price:            stock.Price,
+		MarketValue:      stock.MarketValue,
+		BreakHistoryHigh: signals.breakHistoryHigh,
+		ContinuousRise:   signals.continuousRise,
+		FallThenRise:     signals.fallThenRise,
+		Trend:            stock.Streak.Trend,
+		StreakInfo:       stock.Streak.Info,
+		HistoryRow:       historyRow,
+		Types:            toStockCandidateTypes(signals),
+	}
+	if verbose {
+		log.Printf("Matched stock candidate: %s|%s", candidate.Code, candidate.Name)
+	}
+	return candidate
+}
+
+func evaluateStockSignals(stock *Stock) (string, stockSignalFlags) {
 	histories := GetHistoryValueRanges(stock)
 	isRise := stock.Price > stock.LastDayPrice
 	if stock.Price == stock.LastDayPrice {
 		isRise = strings.Contains(stock.Streak.Info, "🔺")
 	}
 	historyRow := analysis.MarkValueInHistory(stock.Price, histories, isRise)
-
-	// 筛选条件1：突破历史高点
-	breakHistoryHigh := false
+	flags := stockSignalFlags{}
 	if len(histories) > 0 && stock.Price >= histories[len(histories)-1].Max.Value {
-		breakHistoryHigh = true
+		flags.breakHistoryHigh = true
 	}
-
-	// 筛选条件2：连续下跌后开始上涨
-	// 筛选条件3：连续上涨
-	continuousRise := false
-	continuousFallThenRise := false
-
-	// 分析趋势
 	if stock.Streak.Trend != "" {
-		// 检查是否连续上涨（忽略中间的横盘）
 		risePattern := regexp.MustCompile(`[📈－]+$`)
 		if match := risePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 3 {
-			continuousRise = true
+			flags.continuousRise = true
 		}
-
-		// 检查是否连续下跌后开始上涨
 		fallRisePattern := regexp.MustCompile(`[📉]{2,}[📈]{2,}$`)
 		if match := fallRisePattern.FindString(stock.Streak.Trend); len([]rune(match)) >= 4 {
-			continuousFallThenRise = true
+			flags.fallThenRise = true
 		}
 	}
+	return historyRow, flags
+}
 
-	// 满足任一筛选条件
-	if (breakHistoryHigh || continuousRise || continuousFallThenRise) && stock.Price > 5 && stock.Price < 70 {
-		stock.RetrieveMarketValue()
-		result := fmt.Sprintf("%s | %s\n%.2f | %.2f亿\n破高: %t 连涨: %t 止跌: %t\n%s\n%s\n%s\n",
-			stock.Code, stock.Name,
-			stock.Price, stock.MarketValue,
-			breakHistoryHigh, continuousRise, continuousFallThenRise,
-			stock.Streak.Trend,
-			stock.Streak.Info,
-			historyRow)
-		if verbose {
-			log.Printf("Matched stock: %s", result)
-		}
-		return result
+func passesStockSift(flags stockSignalFlags, price float64) bool {
+	return (flags.breakHistoryHigh || flags.continuousRise || flags.fallThenRise) && price > 5 && price < 70
+}
+
+func toStockCandidateTypes(flags stockSignalFlags) []string {
+	types := make([]string, 0, 3)
+	if flags.breakHistoryHigh {
+		types = append(types, "破高")
 	}
-	return ""
+	if flags.continuousRise {
+		types = append(types, "连涨")
+	}
+	if flags.fallThenRise {
+		types = append(types, "止跌反弹")
+	}
+	return types
 }
 
 func (s *Stock) RetrieveLatestPrice() {
