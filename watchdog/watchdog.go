@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"go-toolkit/watchdog/product"
+	"go-toolkit/watchdog/product/analysis"
 	"go-toolkit/watchdog/service"
 	"go-toolkit/watchdog/utils"
 	"log"
@@ -91,8 +92,8 @@ func main() {
 
 			needToSift := cCtx.Bool("sift")
 			if needToSift {
-				service.Notify(configs, product.Sift(&product.StockFactory{}, verbose))
-				service.Notify(configs, product.Sift(&product.FundFactory{}, verbose))
+				notifySiftWithLLM(configs, &product.StockFactory{})
+				notifySiftWithLLM(configs, &product.FundFactory{})
 				return nil
 			}
 
@@ -158,6 +159,19 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func notifySiftWithLLM(configs *service.Config, factory product.Factory) {
+	raw := product.Sift(factory, verbose)
+	msg, err := analysis.AnalyzeWithLLM(configs.LLM.BaseURL, configs.LLM.APIKey, configs.LLM.Model, factory.LLMPrompt(), raw)
+	if err != nil {
+		log.Printf("LLM 分析失败，回退原始筛选结果: %v", err)
+	}
+	msg = strings.TrimSpace(msg)
+	if msg == "" || msg == "No data available." {
+		return
+	}
+	service.Notify(configs, msg)
 }
 
 func watchFund(fund *product.Fund) {

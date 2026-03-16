@@ -72,6 +72,14 @@ func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
 // StockFactory implements Factory for stocks.
 type StockFactory struct{}
 
+func (s StockFactory) LLMPrompt() string {
+	return `你是一位资深A股分析助手。请基于输入中的股票筛选结果，输出结构化、简洁、可执行的结论。要求：
+1) 先按破高、连涨、止跌进行分类；
+2) 然后评选出每类中，最具投资潜力的三只股票；
+3) 最后在每类中按投资价值递减排序；
+4) 全文使用中文，输出格式保持与输入格式一致。`
+}
+
 func (s StockFactory) GetAllCodes() []string {
 	bodyStr := utils.HttpsGet("https://api.biyingapi.com/hslt/list/biyinglicence")
 	var jsonArray []map[string]string

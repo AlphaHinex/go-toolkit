@@ -17,6 +17,7 @@ type Factory interface {
 	GetAllCodes() []string                        // fetching financial products' code.
 	Build(code string) FinancialProduct           // build a financial product by code.
 	SiftIn(item interface{}, verbose bool) string // sift in a financial product item and return its representation.
+	LLMPrompt() string                            // prompt used for LLM analysis.
 }
 
 func Sift(factory Factory, verbose bool) string {

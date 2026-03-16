@@ -97,6 +97,10 @@ func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
 // FundFactory implements Factory for funds.
 type FundFactory struct{}
 
+func (f FundFactory) LLMPrompt() string {
+	return "你是一位资深基金分析助手。请基于输入中的基金筛选结果，输出结构化、简洁、可执行的结论。要求：1) 只基于输入内容，不编造数据；2) 先给3条以内关键结论；3) 再给按优先级排序的关注基金（若有）；4) 结合涨跌连续性与历史区间信号给出观察点；5) 最后给简短风险提示；6) 全文使用中文，控制在450字以内。"
+}
+
 func (f FundFactory) GetAllCodes() []string {
 	bodyStr := string(utils.HttpsGet("https://m.1234567.com.cn/data/FundSuggestList.js"))
 	re := regexp.MustCompile(`(?s).*FundSuggestList\((.*?)\)\s*$`)
