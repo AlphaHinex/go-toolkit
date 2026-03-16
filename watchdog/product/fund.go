@@ -98,7 +98,10 @@ func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
 type FundFactory struct{}
 
 func (f FundFactory) LLMPrompt() string {
-	return "你是一位资深基金分析助手。请基于输入中的基金筛选结果，输出结构化、简洁、可执行的结论。要求：1) 只基于输入内容，不编造数据；2) 先给3条以内关键结论；3) 再给按优先级排序的关注基金（若有）；4) 结合涨跌连续性与历史区间信号给出观察点；5) 最后给简短风险提示；6) 全文使用中文，控制在450字以内。"
+	return `你是一位资深基金分析助手，请从输入的基金中筛选部分结果，要求：
+1) 按照每只基金的投资价值又高到低排序；
+2) 保留排序结果的前十只基金（不足不用补充）；
+3) 将筛选结果与输入格式保持一致输出。`
 }
 
 func (f FundFactory) GetAllCodes() []string {
