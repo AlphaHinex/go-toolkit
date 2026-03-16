@@ -37,6 +37,11 @@ funds:
 token:
   lark: xxxxxx # 飞书机器人 Webhook token，可选
   dingtalk: xxxxxx # 钉钉机器人 Webhook token，可选
+
+llm:
+  base-url: https://api.openai.com # OpenAI 兼容接口地址，不含 /v1/chat/completions
+  api-key: sk-xxxxxx # 大模型 API Key
+  model: gpt-4o-mini # 使用的模型名称
 ```
 
 输出内容样例：
