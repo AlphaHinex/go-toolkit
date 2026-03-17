@@ -54,6 +54,7 @@ func Sift(factory Factory, verbose bool) string {
 	}
 
 	wg.Wait() // 等待所有任务完成
+	log.Printf("[product sift] All codes processed. Total results: %d\n", len(codes))
 	if resultBuilder.Len() == 0 {
 		return "No data available."
 	} else {
