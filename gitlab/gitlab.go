@@ -166,7 +166,11 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	go getCommits(proj.Id, br, since+"T00:00:00", until+"T23:59:59", commitChannel, parents)
 
 	filename := fmt.Sprintf("%d_%s_%s_%s~%s.csv", proj.Id, proj.Name, strings.ReplaceAll(br, "/", ""), since, until)
-	_ = os.Remove(filename)
+	// Delete before create
+	err := os.Remove(filename)
+	if err != nil && !os.IsNotExist(err) {
+		log.Fatalf("File %s exists and delete failed: %s", filename, err)
+	}
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		log.Fatalf("Open file failed: %s", err)
@@ -193,7 +197,11 @@ func analyseProjectBranch(proj project, br, since, until string, parents, parall
 	if hasContent {
 		log.Printf("Generate %s use %s.\r\n", filename, time.Since(from))
 	} else {
-		_ = os.Remove(filename)
+		file.Close()
+		err = os.Remove(filename)
+		if err != nil && !os.IsNotExist(err) {
+			log.Fatalf("Delete file failed: %s", err)
+		}
 		log.Printf("No data, remove %s, use %s.\r\n", filename, time.Since(from))
 	}
 
