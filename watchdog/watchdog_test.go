@@ -6,6 +6,7 @@ import (
 	"go-toolkit/watchdog/product"
 	"go-toolkit/watchdog/service"
 	"go-toolkit/watchdog/utils"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,4 +63,56 @@ func TestSift(t *testing.T) {
 		t.Error("Expected sift result to be non-empty")
 	}
 	fmt.Println(result)
+}
+
+func TestUpdatePersistedStock_NameUpdatedWhenLatestNonEmpty(t *testing.T) {
+	persisted := &product.Stock{Name: "旧名称", Price: 1}
+	latest := &product.Stock{Name: "新名称", Price: 2}
+
+	updatePersistedStock(persisted, latest)
+
+	if strings.TrimSpace(persisted.Name) != "新名称" {
+		t.Fatalf("expected persisted name updated, got: %q", persisted.Name)
+	}
+	if persisted.Price != 2 {
+		t.Fatalf("expected persisted price updated, got: %v", persisted.Price)
+	}
+}
+
+func TestUpdatePersistedStock_NamePreservedWhenLatestEmpty(t *testing.T) {
+	persisted := &product.Stock{Name: "旧名称", Price: 1}
+	latest := &product.Stock{Name: " ", Price: 2}
+
+	updatePersistedStock(persisted, latest)
+
+	if persisted.Name != "旧名称" {
+		t.Fatalf("expected persisted name preserved, got: %q", persisted.Name)
+	}
+	if persisted.Price != 2 {
+		t.Fatalf("expected persisted price updated, got: %v", persisted.Price)
+	}
+}
+
+func TestUpdatePersistedStock_NameRules(t *testing.T) {
+	tests := []struct {
+		name          string
+		persistedName string
+		latestName    string
+		expectedName  string
+	}{
+		{name: "updated when latest non-empty", persistedName: "旧名称", latestName: "新名称", expectedName: "新名称"},
+		{name: "preserved when latest empty", persistedName: "旧名称", latestName: "", expectedName: "旧名称"},
+		{name: "preserved when latest whitespace", persistedName: "旧名称", latestName: "  ", expectedName: "旧名称"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			persisted := &product.Stock{Name: tt.persistedName}
+			latest := &product.Stock{Name: tt.latestName}
+			updatePersistedStock(persisted, latest)
+			if persisted.Name != tt.expectedName {
+				t.Fatalf("expected name %q, got %q", tt.expectedName, persisted.Name)
+			}
+		})
+	}
 }
