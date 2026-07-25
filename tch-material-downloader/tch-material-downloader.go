@@ -245,47 +245,35 @@ func (d *downloader) loadAudioItems(ctx context.Context, courseID string) ([]aud
 	if err != nil {
 		return nil, fmt.Errorf("load relation_audios.json failed: %w", err)
 	}
-	log.Printf("[audio-debug] relation_audios source: %s", u)
-	log.Printf("[audio-debug] relation_audios root type: %T", root)
 
 	// Primary parser: match the proven script flow used before Go implementation
 	// (top-level item -> ti_items -> href/source mp3).
 	primaryItems := collectTopLevelAudioItems(root)
-	log.Printf("[audio-debug] extracted top-level audio items: %d", len(primaryItems))
 	if len(primaryItems) > 0 {
 		result := make([]audioItem, 0, len(primaryItems))
 		seen := make(map[string]struct{}, len(primaryItems))
-		for idx, item := range primaryItems {
+		for _, item := range primaryItems {
 			title := pickTitle(item)
-			selectedURL, candidates := pickAudioFromTopLevelItem(item)
-			log.Printf("[audio-debug][top-level %d] title=%q candidates=%d selected=%q", idx+1, title, len(candidates), shortURL(selectedURL))
-			if len(candidates) > 0 {
-				log.Printf("[audio-debug][top-level %d] candidates detail: %s", idx+1, strings.Join(shortURLs(candidates), " | "))
-			}
+			selectedURL, _ := pickAudioFromTopLevelItem(item)
 			if selectedURL == "" {
-				log.Printf("[audio-debug][top-level %d] skipped: no downloadable URL found", idx+1)
 				continue
 			}
 			if _, ok := seen[selectedURL]; ok {
-				log.Printf("[audio-debug][top-level %d] skipped: duplicate selected URL", idx+1)
 				continue
 			}
 			seen[selectedURL] = struct{}{}
 			result = append(result, audioItem{Title: title, URL: selectedURL})
 		}
 		if len(result) > 0 {
-			log.Printf("[audio-debug] final downloadable audio items (top-level parser): %d", len(result))
 			return result, nil
 		}
-		log.Printf("[audio-debug] top-level parser found 0 downloadable URLs, fallback to recursive parser")
 	}
 
 	itemsRaw := extractAudioRows(root)
-	log.Printf("[audio-debug] extracted raw audio rows (fallback): %d", len(itemsRaw))
 
 	result := make([]audioItem, 0, len(itemsRaw))
 	seen := make(map[string]struct{}, len(itemsRaw))
-	for idx, row := range itemsRaw {
+	for _, row := range itemsRaw {
 		obj := row
 		title := toString(obj["ti_title"])
 		if title == "" {
@@ -294,23 +282,16 @@ func (d *downloader) loadAudioItems(ctx context.Context, courseID string) ([]aud
 		if title == "" {
 			title = "audio"
 		}
-		u, candidates := pickAudioURL(obj)
-		log.Printf("[audio-debug][row %d] title=%q candidates=%d selected=%q", idx+1, title, len(candidates), shortURL(u))
-		if len(candidates) > 0 {
-			log.Printf("[audio-debug][row %d] candidates detail: %s", idx+1, strings.Join(shortURLs(candidates), " | "))
-		}
+		u, _ := pickAudioURL(obj)
 		if u == "" {
-			log.Printf("[audio-debug][row %d] skipped: no downloadable URL found", idx+1)
 			continue
 		}
 		if _, ok := seen[u]; ok {
-			log.Printf("[audio-debug][row %d] skipped: duplicate selected URL", idx+1)
 			continue
 		}
 		seen[u] = struct{}{}
 		result = append(result, audioItem{Title: title, URL: u})
 	}
-	log.Printf("[audio-debug] final downloadable audio items (fallback parser): %d", len(result))
 	return result, nil
 }
 
@@ -597,24 +578,6 @@ func pickAudioURL(item map[string]any) (string, []string) {
 		return candidates[0], candidates
 	}
 	return "", candidates
-}
-
-func shortURLs(urls []string) []string {
-	out := make([]string, 0, len(urls))
-	for _, u := range urls {
-		out = append(out, shortURL(u))
-	}
-	return out
-}
-
-func shortURL(u string) string {
-	if u == "" {
-		return ""
-	}
-	if len(u) <= 120 {
-		return u
-	}
-	return u[:117] + "..."
 }
 
 func findAllResourceURLs(data any, accept func(string) bool) []string {
