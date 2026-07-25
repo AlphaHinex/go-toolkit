@@ -42,6 +42,7 @@ type downloadRecord struct {
 
 type runSummary struct {
 	CourseID      string           `json:"courseId"`
+	CourseName    string           `json:"courseName,omitempty"`
 	OutputDir     string           `json:"outputDir"`
 	GeneratedAt   string           `json:"generatedAt"`
 	AudioCount    int              `json:"audioCount"`
@@ -120,14 +121,6 @@ func main() {
 				return errors.New("course-id is required")
 			}
 
-			output := strings.TrimSpace(cCtx.String("output"))
-			if output == "" {
-				output = filepath.Join("output", courseID)
-			}
-			if err := os.MkdirAll(output, 0755); err != nil {
-				return fmt.Errorf("create output dir failed: %w", err)
-			}
-
 			httpTimeout := time.Duration(cCtx.Int("timeout")) * time.Second
 			client := &http.Client{Timeout: httpTimeout}
 			dl := &downloader{
@@ -137,14 +130,34 @@ func main() {
 				ua:      cCtx.String("ua"),
 			}
 
+			ctx := context.Background()
+			courseName, courseNameErr := dl.loadCourseName(ctx, courseID)
+			if courseNameErr != nil {
+				log.Printf("Load course name failed, fallback to course ID: %v", courseNameErr)
+			}
+
+			output := strings.TrimSpace(cCtx.String("output"))
+			if output == "" {
+				defaultFolder := courseID
+				if courseName != "" {
+					defaultFolder = safeFileName(courseName, 80)
+				}
+				output = filepath.Join("output", defaultFolder)
+			}
+			if err := os.MkdirAll(output, 0755); err != nil {
+				return fmt.Errorf("create output dir failed: %w", err)
+			}
+
 			summary := runSummary{
 				CourseID:      courseID,
+				CourseName:    courseName,
 				OutputDir:     output,
 				GeneratedAt:   time.Now().Format(time.RFC3339),
 				DownloadItems: make([]downloadRecord, 0),
 			}
-
-			ctx := context.Background()
+			if courseName != "" {
+				log.Printf("Course name: %s", courseName)
+			}
 			audioItems, err := dl.loadAudioItems(ctx, courseID)
 			if err != nil {
 				log.Printf("Load audio list failed, continue with PDF only: %v", err)
@@ -192,7 +205,16 @@ func main() {
 					if ext == "" {
 						ext = ".pdf"
 					}
-					fileName := fmt.Sprintf("textbook_%02d_%s%s", idx+1, safeFileName(item.Title, 80), ext)
+					pdfBaseName := safeFileName(courseID, 80)
+					if courseName != "" {
+						pdfBaseName = safeFileName(courseName, 80)
+					} else if item.Title != "" {
+						pdfBaseName = safeFileName(item.Title, 80)
+					}
+					fileName := pdfBaseName + ext
+					if idx > 0 {
+						fileName = fmt.Sprintf("%s_%02d%s", pdfBaseName, idx+1, ext)
+					}
 					filePath := filepath.Join(output, fileName)
 					n, dlErr := dl.downloadFile(ctx, item.URL, filePath)
 					record := downloadRecord{
@@ -407,6 +429,63 @@ func (d *downloader) loadPDFItems(ctx context.Context, courseID string) ([]audio
 		items = append(items, audioItem{Title: title, URL: one})
 	}
 	return items, nil
+}
+
+func (d *downloader) loadCourseName(ctx context.Context, courseID string) (string, error) {
+	u := fmt.Sprintf("%s/zxx/ndrv2/resources/tch_material/details/%s.json", defaultBaseURL, url.PathEscape(courseID))
+	root, err := d.fetchJSONValue(ctx, u)
+	if err != nil {
+		return "", err
+	}
+
+	if name := findFirstNamedString(root, []string{"title", "name", "resource_name", "resourceName", "material_name", "materialName", "book_name", "bookName"}); name != "" {
+		return name, nil
+	}
+
+	if obj, ok := root.(map[string]any); ok {
+		if gt, ok := obj["global_title"].(map[string]any); ok {
+			if zh := toString(gt["zh-CN"]); zh != "" {
+				return zh, nil
+			}
+		}
+	}
+
+	return "", nil
+}
+
+func findFirstNamedString(v any, keys []string) string {
+	keySet := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		keySet[strings.ToLower(k)] = struct{}{}
+	}
+
+	var walk func(any) string
+	walk = func(node any) string {
+		switch x := node.(type) {
+		case map[string]any:
+			for k, mv := range x {
+				if _, ok := keySet[strings.ToLower(k)]; ok {
+					if s := toString(mv); s != "" {
+						return s
+					}
+				}
+			}
+			for _, mv := range x {
+				if s := walk(mv); s != "" {
+					return s
+				}
+			}
+		case []any:
+			for _, av := range x {
+				if s := walk(av); s != "" {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+
+	return walk(v)
 }
 
 func (d *downloader) fetchJSONValue(ctx context.Context, reqURL string) (any, error) {
@@ -640,11 +719,14 @@ func toString(v any) string {
 var invalidChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1F]`)
 
 func safeFileName(raw string, maxLen int) string {
-	name := strings.TrimSpace(raw)
+	name := strings.ToValidUTF8(raw, "")
+	name = strings.ReplaceAll(name, "\uFFFD", "")
+	name = strings.TrimSpace(name)
 	name = strings.ReplaceAll(name, "\n", " ")
 	name = strings.ReplaceAll(name, "\r", " ")
 	name = invalidChars.ReplaceAllString(name, "_")
 	name = strings.Join(strings.Fields(name), " ")
+	name = strings.Trim(name, " .")
 	if name == "" {
 		name = "untitled"
 	}
