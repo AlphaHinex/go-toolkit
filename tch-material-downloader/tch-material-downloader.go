@@ -63,7 +63,7 @@ func main() {
 	app := &cli.App{
 		Name:    "tch-material-downloader",
 		Usage:   "Download all audios and textbook PDF(s) for a SmartEdu material course",
-		Version: "v2.6.2",
+		Version: "v2.6.3",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "mac-id",

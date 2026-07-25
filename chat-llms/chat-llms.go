@@ -69,7 +69,7 @@ func main() {
 	app := &cli.App{
 		Name:    "chat-llms",
 		Usage:   "Chat with multi-LLMs at the same time.",
-		Version: "v2.6.2",
+		Version: "v2.6.3",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:     "repeat",
