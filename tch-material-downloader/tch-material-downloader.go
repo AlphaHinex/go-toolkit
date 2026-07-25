@@ -730,9 +730,17 @@ func safeFileName(raw string, maxLen int) string {
 	if name == "" {
 		name = "untitled"
 	}
-	if maxLen > 0 && len(name) > maxLen {
-		name = name[:maxLen]
+	if maxLen > 0 {
+		runes := []rune(name)
+		if len(runes) > maxLen {
+			name = string(runes[:maxLen])
+		}
+		name = strings.ToValidUTF8(name, "")
 		name = strings.TrimSpace(name)
+		name = strings.Trim(name, " .")
+		if name == "" {
+			name = "untitled"
+		}
 	}
 	return name
 }
