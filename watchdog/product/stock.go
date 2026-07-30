@@ -14,6 +14,16 @@ import (
 	"time"
 )
 
+var CommonMovingAveragePeriods = []int{5, 10, 20, 60, 120, 250}
+
+type StockPeriodStats struct {
+	Period    int
+	Min       float64
+	Max       float64
+	MA        float64
+	Available bool
+}
+
 type Stock struct {
 	Code          string                  `yaml:"-"`              // 股票代码，如 300750.SZ
 	Name          string                  `yaml:"name"`           // 股票名称
@@ -39,6 +49,9 @@ func (s *Stock) IsTradable() bool {
 }
 
 func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
+	if len(s.HistoryValues) > 0 {
+		return s.HistoryValues
+	}
 	jsonObj, err := getLastNDataFromThs(s.Code, 365*100, false)
 	if err != nil {
 		log.Printf(err.Error())
@@ -67,6 +80,65 @@ func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
 	}
 	QueryStreakInfo(s.HistoryValues, &s.Streak)
 	return s.HistoryValues
+}
+
+func (s *Stock) GetPeriodStats(periods []int) map[int]StockPeriodStats {
+	result := make(map[int]StockPeriodStats, len(periods))
+	history := s.QueryHistoryValues()
+
+	for _, period := range periods {
+		stats := StockPeriodStats{Period: period}
+		if period <= 0 || len(history) < period {
+			result[period] = stats
+			continue
+		}
+		window := history[len(history)-period:]
+		minV := window[0].Value
+		maxV := window[0].Value
+		sum := 0.0
+		for _, v := range window {
+			if v.Value < minV {
+				minV = v.Value
+			}
+			if v.Value > maxV {
+				maxV = v.Value
+			}
+			sum += v.Value
+		}
+		stats.Min = minV
+		stats.Max = maxV
+		stats.MA = sum / float64(period)
+		stats.Available = true
+		result[period] = stats
+	}
+	return result
+}
+
+func relationToMA(price, ma float64) string {
+	if price > ma {
+		return "高于MA"
+	}
+	if price < ma {
+		return "低于MA"
+	}
+	return "持平MA"
+}
+
+func (s *Stock) ComposePeriodStatsRows() string {
+	stats := s.GetPeriodStats(CommonMovingAveragePeriods)
+	lines := make([]string, 0, len(CommonMovingAveragePeriods))
+
+	for _, period := range CommonMovingAveragePeriods {
+		entry := stats[period]
+		if !entry.Available {
+			lines = append(lines, fmt.Sprintf("%d日：N/A", period))
+			continue
+		}
+		lines = append(lines,
+			fmt.Sprintf("%d日：[%.4f, %.4f] MA=%.4f 当前价%s", period, entry.Min, entry.Max, entry.MA, relationToMA(s.Price, entry.MA)))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // StockFactory implements Factory for stocks.
@@ -255,6 +327,7 @@ func (s *Stock) PrettyPrint() string {
 	} else {
 		row += fmt.Sprintf("%s%.4f (%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	}
+	row += s.ComposePeriodStatsRows() + "\n"
 	return row + "\n"
 }
 
@@ -310,3 +383,4 @@ func getMarketAndCodeNumber(stockCode string) (string, string) {
 	}
 	return marketCode, parts[0]
 }
+

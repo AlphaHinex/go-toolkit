@@ -116,6 +116,9 @@ func main() {
 				}
 				lastPrice := persistedStock.Price
 				stock := product.StockFactory{}.Build(key).(*product.Stock)
+				if strings.TrimSpace(stock.Name) == "" {
+					stock.Name = persistedStock.Name
+				}
 				stock.Low = persistedStock.Low
 				stock.High = persistedStock.High
 				// 股票价格监视不关心监视时间点，只要开盘中超过阈值及上分钟值，每分钟都可发消息
@@ -129,10 +132,7 @@ func main() {
 					stocks = append(stocks, stock)
 				}
 				// 持久化股票最新信息
-				persistedStock.Price = stock.Price
-				persistedStock.LastDayPrice = stock.LastDayPrice
-				persistedStock.Datetime = stock.Datetime
-				persistedStock.Streak = stock.Streak
+				updatePersistedStock(persistedStock, stock)
 			}
 
 			var message strings.Builder
@@ -159,6 +159,16 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func updatePersistedStock(persistedStock *product.Stock, latest *product.Stock) {
+	if strings.TrimSpace(latest.Name) != "" {
+		persistedStock.Name = latest.Name
+	}
+	persistedStock.Price = latest.Price
+	persistedStock.LastDayPrice = latest.LastDayPrice
+	persistedStock.Datetime = latest.Datetime
+	persistedStock.Streak = latest.Streak
 }
 
 func notifySiftWithLLM(configs *service.Config, factory product.Factory) {
