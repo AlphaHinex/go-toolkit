@@ -7,7 +7,7 @@ import (
 )
 
 func TestFundFactory_Build(t *testing.T) {
-	fund := FundFactory{}.Build("002401").(*Fund)
+	fund := FundFactory{}.Build("008099").(*Fund)
 	println(fund.Name)
 	println(fund.NetValue.Date)
 	if fund.Name == "" {
@@ -21,10 +21,17 @@ func TestFundFactory_Build(t *testing.T) {
 }
 
 func TestFund_ComposeHistoryRow(t *testing.T) {
-	fund := FundFactory{}.Build("002808").(*Fund)
+	fund := FundFactory{}.Build("008099").(*Fund)
 	row := fund.ComposeHistoryRow(fund.NetValue.Value)
 	fmt.Printf("%s|%s\n最新净值：%.4f\n%s\n", fund.Code, fund.Name, fund.NetValue.Value, row)
 	if row == "" {
 		t.Error("Expected history row to be non-empty")
 	}
+}
+
+func TestFund_RetrieveRealtimeEstimate(t *testing.T) {
+	fund := FundFactory{}.Build("008099").(*Fund)
+	fund.RetrieveRealtimeEstimate()
+	fmt.Printf("%v", fund.Estimate)
+	println(fund.PrettyPrint(true))
 }

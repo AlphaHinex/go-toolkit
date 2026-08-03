@@ -42,10 +42,10 @@ type Fund struct {
 
 // Estimate 实时估值结构体
 type Estimate struct {
-	Value    string `json:"gsz" yaml:"-"`           // 实时估算净值
-	Margin   string `json:"gszzl" yaml:"-"`         // 实时估算涨跌幅
-	Datetime string `json:"gztime" yaml:"datetime"` // 实时估算时间
-	Changed  bool   `json:"-" yaml:"changed"`       // 实时估算是否变动
+	Value    string `yaml:"-"`        // 实时估算净值
+	Margin   string `yaml:"-"`        // 实时估算涨跌幅
+	Datetime string `yaml:"datetime"` // 实时估算时间
+	Changed  bool   `yaml:"changed"`  // 实时估算是否变动
 }
 
 type NetValue struct {
@@ -229,6 +229,32 @@ func (f *Fund) GetNetValueDate() (time.Time, error) {
 	// 获取净值日期
 	netValueDate, err := time.ParseInLocation("2006-01-02", f.NetValue.Date, now.Location())
 	return netValueDate, err
+}
+
+// RetrieveRealtimeEstimate 获取基金实时估算净值
+func (f *Fund) RetrieveRealtimeEstimate() {
+	sinaBody := utils.HttpsGet(fmt.Sprintf("https://stock.finance.sina.com.cn/fundInfo/api/openapi.php/FdFundService.getEstimateNetworthPic?symbol=%s", f.Code))
+	var sinaRes map[string]interface{}
+	if err := json.Unmarshal(sinaBody, &sinaRes); err == nil && sinaRes["result"] != nil {
+		data := sinaRes["result"].(map[string]interface{})["data"].(map[string]interface{})
+		// 优先使用当日实时估值序列的最新一条（networth 数组末尾）
+		if networth, ok := data["networth"].([]interface{}); ok && len(networth) > 0 {
+			latest := networth[len(networth)-1].(map[string]interface{})
+			f.Estimate.Value = latest["pre_nav2"].(string)
+			f.Estimate.Margin = latest["nav2_pct"].(string)
+			datetime := fmt.Sprintf("%s %s", latest["pre_date"].(string), strings.TrimSuffix(latest["min_time"].(string), ":00"))
+			f.Estimate.Changed = !(datetime == f.Estimate.Datetime)
+			f.Estimate.Datetime = datetime
+			estimateValue, _ := strconv.ParseFloat(f.Estimate.Value, 64)
+			if f.Cost > 0 {
+				f.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-f.Cost)/f.Cost*100)
+			}
+		} else {
+			log.Println(f.Code, "未获取到实时估值数据", sinaBody)
+		}
+	} else {
+		log.Println(f.Code, "未获取到实时估值数据", sinaBody)
+	}
 }
 
 // 返回当前东八区时间，基金最近的估值时间，以及净值日期
