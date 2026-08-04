@@ -127,6 +127,7 @@ func main() {
 					stocks = append(stocks, stock)
 				}
 				// 持久化股票最新信息
+				persistedStock.Name = stock.Name
 				persistedStock.Price = stock.Price
 				persistedStock.LastDayPrice = stock.LastDayPrice
 				persistedStock.Datetime = stock.Datetime

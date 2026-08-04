@@ -67,6 +67,9 @@ func (f *Fund) IsTradable() bool {
 }
 
 func (f *Fund) QueryHistoryValues() []analysis.HistoryValue {
+	if len(f.HistoryValues) > 0 {
+		return f.HistoryValues
+	}
 	res, _ := utils.GetFundHttpsResponse("https://fundcomapi.tiantianfunds.com/mm/newCore/FundVPageDiagram",
 		url.Values{"FCODE": {f.Code}, "RANGE": {"ln"}})
 	if res["data"] == nil || len(res["data"].([]interface{})) == 0 {
