@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"go-toolkit/watchdog/product"
@@ -10,7 +9,6 @@ import (
 	"go-toolkit/watchdog/utils"
 	"log"
 	"os"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -129,6 +127,7 @@ func main() {
 					stocks = append(stocks, stock)
 				}
 				// 持久化股票最新信息
+				persistedStock.Name = stock.Name
 				persistedStock.Price = stock.Price
 				persistedStock.LastDayPrice = stock.LastDayPrice
 				persistedStock.Datetime = stock.Datetime
@@ -193,35 +192,8 @@ func watchFund(fund *product.Fund) {
 
 	if watchNow || isWatchTime(now) {
 		// 获取实时估算净值
-		estimate := getFundRealtimeEstimate(fund.Code)
-		if estimate != nil {
-			changed := !(estimate.Datetime == fund.Estimate.Datetime)
-			fund.Estimate = *estimate
-			fund.Estimate.Changed = changed
-			estimateValue, _ := strconv.ParseFloat(estimate.Value, 64)
-			if fund.Cost > 0 {
-				fund.Profit.Estimate = fmt.Sprintf("%.2f", (estimateValue-fund.Cost)/fund.Cost*100)
-			}
-		}
+		fund.RetrieveRealtimeEstimate()
 	}
-}
-
-// 获取基金实时估算净值
-func getFundRealtimeEstimate(fundCode string) *product.Estimate {
-	reUrl := fmt.Sprintf("https://fundgz.1234567.com.cn/js/%s.js", fundCode)
-	bodyStr := string(utils.HttpsGet(reUrl))
-	re := regexp.MustCompile(`jsonpgz\((.*?)\);`)
-	matches := re.FindStringSubmatch(bodyStr)
-	if len(matches) < 2 {
-		return nil
-	}
-
-	var e product.Estimate
-	if err := json.Unmarshal([]byte(matches[1]), &e); err != nil {
-		// 部分基金没有实时估值信息，返回内容为 `jsonpgz();`
-		log.Println(fundCode, "未获取到实时估值数据", bodyStr)
-	}
-	return &e
 }
 
 func filterFunds(funds []*product.Fund) []*product.Fund {

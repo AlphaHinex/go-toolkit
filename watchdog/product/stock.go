@@ -39,6 +39,9 @@ func (s *Stock) IsTradable() bool {
 }
 
 func (s *Stock) QueryHistoryValues() []analysis.HistoryValue {
+	if len(s.HistoryValues) > 0 {
+		return s.HistoryValues
+	}
 	jsonObj, err := getLastNDataFromThs(s.Code, 365*100, false)
 	if err != nil {
 		log.Printf(err.Error())
@@ -254,6 +257,9 @@ func (s *Stock) PrettyPrint() string {
 		row += fmt.Sprintf("%s%.4f ▼ (%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
 	} else {
 		row += fmt.Sprintf("%s%.4f (%.4f ~ %.4f)\n", upOrDownMark, s.Price, s.Low, s.High)
+	}
+	if ShouldShowAll(s) {
+		row += analysis.MarkValueInHistory(s.Price, GetHistoryValueRanges(s), s.Price > s.LastDayPrice)
 	}
 	return row + "\n"
 }
