@@ -243,8 +243,8 @@ func (f *Fund) RetrieveRealtimeEstimate() {
 		// 优先使用当日实时估值序列的最新一条（networth 数组末尾）
 		if networth, ok := data["networth"].([]interface{}); ok && len(networth) > 0 {
 			latest := networth[len(networth)-1].(map[string]interface{})
-			f.Estimate.Value = latest["pre_nav2"].(string)
-			f.Estimate.Margin = latest["nav2_pct"].(string)
+			f.Estimate.Value, _ = latest["pre_nav2"].(string)
+			f.Estimate.Margin, _ = latest["nav2_pct"].(string)
 			datetime := fmt.Sprintf("%s %s", latest["pre_date"].(string), strings.TrimSuffix(latest["min_time"].(string), ":00"))
 			f.Estimate.Changed = !(datetime == f.Estimate.Datetime)
 			f.Estimate.Datetime = datetime

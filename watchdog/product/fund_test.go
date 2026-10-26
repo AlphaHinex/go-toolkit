@@ -30,7 +30,7 @@ func TestFund_ComposeHistoryRow(t *testing.T) {
 }
 
 func TestFund_RetrieveRealtimeEstimate(t *testing.T) {
-	fund := FundFactory{}.Build("008099").(*Fund)
+	fund := FundFactory{}.Build("002401").(*Fund)
 	fund.RetrieveRealtimeEstimate()
 	fmt.Printf("%v", fund.Estimate)
 	println(fund.PrettyPrint(true))
